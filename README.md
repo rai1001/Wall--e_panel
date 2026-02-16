@@ -21,6 +21,20 @@ Entregar base modular mínima con flujo integrado:
 - `src/policy`: RBAC + confirmaciones.
 - `src/shared`: utilidades compartidas (event bus, errores, ids).
 
+## Matriz RBAC (Day 1)
+Roles: `admin`, `manager`, `member`, `viewer`  
+Recursos: `chat`, `proyecto`, `memoria`, `automatizacion`  
+Acciones: `create`, `read`, `update`, `delete`, `execute`
+
+| Role | chat | proyecto | memoria | automatizacion |
+| --- | --- | --- | --- | --- |
+| admin | CRUD + execute | CRUD + execute | CRUD + execute | CRUD + execute |
+| manager | CRUD | CRUD | CRUD | read + execute |
+| member | create/read/update | create/read/update | create/read/update | read + execute |
+| viewer | read | read | read | read |
+
+Implementacion en código: `src/policy/rbac.ts`.
+
 ## Flujo de eventos
 1. `project` crea tarea y emite `task_created`.
 2. `automation` consume `task_created`.
