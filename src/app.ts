@@ -100,6 +100,12 @@ export function createApp(context: AppContext = createAppContext()) {
     res.type("application/yaml").send(readOpenApiSpec());
   });
 
+  // Chrome DevTools probes this endpoint automatically in some sessions.
+  // Return a small JSON payload to avoid noisy 404/CSP console warnings.
+  app.get("/.well-known/appspecific/com.chrome.devtools.json", (_req, res) => {
+    res.status(200).json({ ok: true });
+  });
+
   const v1 = express.Router();
   mountDomainRouters(v1, context);
   app.use("/v1", v1);
