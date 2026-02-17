@@ -1,24 +1,34 @@
-# Day 3 Checklist (Pendiente)
+# Day 3 Checklist - Cierre
 
-1. API contract hardening
-- Validacion estructural de payloads con esquemas (zod o similar).
-- Versionado de API (`/v1`) y manejo de deprecaciones.
+## Estado general
+- [x] Completado sobre base `822bd04`
+- [x] Compatible con rutas legacy (deprecadas) y rutas versionadas `/v1`
 
-2. Automatizacion avanzada
-- Condiciones compuestas (AND/OR) en triggers.
-- Dead-letter queue para fallos permanentes.
-- Programacion temporal (`cron`) para reglas.
+## 1) Memoria vectorizada real
+- [x] Embeddings persistentes (`memory_embeddings`)
+- [x] Búsqueda híbrida (semantic + lexical + prioridad por proyecto/agente/scope)
+- [x] Filtros por `project_id`, `agent_id`, `scope`, `memoryType`, rango fecha
+- [x] Endpoint de reindex incremental (`POST /v1/memory/reindex`)
 
-3. Seguridad adicional
-- Rotacion de secretos JWT.
-- Rate limiting por endpoint.
-- Bloqueo progresivo por intentos fallidos de login.
+## 2) Endpoints panel-ready
+- [x] Métricas de memoria (`GET /v1/ops/memory/metrics`)
+- [x] Salud de automatización (`GET /v1/ops/automation/health`)
+- [x] Auditoría agregada (`GET /v1/ops/audit/aggregated`)
+- [x] Vista panel de memorias + acciones (`GET /v1/memory/panel`, promote/forget/block)
 
-4. Observabilidad
-- Metricas (latencia, error rate, retries).
-- Correlation ID por request y por evento.
-- Dashboard operacional basico.
+## 3) Data hygiene
+- [x] Deduplicación (`POST /v1/memory/deduplicate`)
+- [x] TTL y archivado de temporales (`POST /v1/memory/hygiene/run`)
+- [x] Limpieza de `processed_events` antiguos (`POST /v1/memory/hygiene/run`)
 
-5. Producto
-- UI minima para aprobaciones y run logs.
-- Plantillas de reglas comunes para onboarding rapido.
+## 4) Seguridad extra
+- [x] Rate limit en `auth/login`
+- [x] Rotación simple JWT por env (`JWT_SECRETS`, compat con múltiples claves)
+- [x] Validación fuerte con Zod en endpoints críticos
+
+## 5) DX + operaciones
+- [x] Backup SQLite (`npm run backup`)
+- [x] Restore SQLite (`npm run restore -- --file=...`)
+- [x] Reindex memoria (`npm run reindex`)
+- [x] Reset seguro local (`FORCE_RESET=true npm run reset:local`)
+- [x] Runbook operativo (`docs/runbook.md`)
