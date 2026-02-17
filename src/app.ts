@@ -1,4 +1,5 @@
 import express from "express";
+import { createAutomationRouter } from "./automation/automation.router";
 import { createAppContext, AppContext } from "./context";
 import { createChatRouter } from "./chat/chat.router";
 import { createMemoryRouter } from "./memory/memory.router";
@@ -18,6 +19,7 @@ export function createApp(context: AppContext = createAppContext()) {
   app.use("/chat", createChatRouter(context.chatService));
   app.use("/projects", createProjectRouter(context.projectService));
   app.use("/memory", createMemoryRouter(context.memoryService));
+  app.use("/automation", createAutomationRouter(context.automationService));
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     if (error instanceof AppError) {

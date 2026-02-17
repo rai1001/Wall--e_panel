@@ -1,3 +1,4 @@
+import { AutomationService } from "./automation/automation.service";
 import { ChatService } from "./chat/chat.service";
 import { MemoryService } from "./memory/memory.service";
 import { ProjectService } from "./project/project.service";
@@ -8,6 +9,7 @@ export interface AppContext {
   chatService: ChatService;
   projectService: ProjectService;
   memoryService: MemoryService;
+  automationService: AutomationService;
 }
 
 export function createAppContext(): AppContext {
@@ -15,12 +17,15 @@ export function createAppContext(): AppContext {
   const chatService = new ChatService(eventBus);
   const projectService = new ProjectService(eventBus);
   const memoryService = new MemoryService(eventBus);
+  const automationService = new AutomationService(eventBus, chatService, memoryService);
   memoryService.enableEventCapture();
+  automationService.start();
 
   return {
     eventBus,
     chatService,
     projectService,
-    memoryService
+    memoryService,
+    automationService
   };
 }
