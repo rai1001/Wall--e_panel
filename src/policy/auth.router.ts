@@ -14,15 +14,53 @@ const loginBodySchema = z.object({
 const AUTH_COOKIE_NAME = "oc_token";
 const AUTH_COOKIE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
+function readPositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+}
+
+function normalizeEmailForRateLimit(value: unknown) {
+  if (typeof value !== "string") {
+    return "unknown-email";
+  }
+
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized.length > 320) {
+    return "unknown-email";
+  }
+
+  return normalized;
+}
+
 export function createAuthRouter(authService: AuthService, rateLimiter: RateLimiter) {
   const router = Router();
+  const loginWindowMs = readPositiveIntEnv("RATE_LIMIT_AUTH_LOGIN_WINDOW_MS", 60_000);
+  const loginIpMax = readPositiveIntEnv("RATE_LIMIT_AUTH_LOGIN_IP_MAX", 10);
+  const loginEmailMax = readPositiveIntEnv("RATE_LIMIT_AUTH_LOGIN_EMAIL_MAX", 8);
 
   router.post(
     "/login",
     createRateLimitMiddleware(rateLimiter, {
-      keyPrefix: "auth-login",
-      max: 10,
-      windowMs: 60_000
+      keyPrefix: "auth-login-ip",
+      keyStrategy: "ip",
+      max: loginIpMax,
+      windowMs: loginWindowMs
+    }),
+    createRateLimitMiddleware(rateLimiter, {
+      keyPrefix: "auth-login-email",
+      keyStrategy: "global",
+      keyResolver: (req) => normalizeEmailForRateLimit(req.body?.email),
+      max: loginEmailMax,
+      windowMs: loginWindowMs
     }),
     validateBody(loginBodySchema),
     asyncHandler(async (req, res) => {

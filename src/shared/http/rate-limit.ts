@@ -1,5 +1,5 @@
 ﻿import { Database } from "better-sqlite3";
-import { RequestHandler } from "express";
+import { Request, RequestHandler } from "express";
 import { AppError } from "./errors";
 
 interface Bucket {
@@ -27,6 +27,13 @@ export interface RateLimitHealth {
   totalBlocks: number;
   sampledAt: string;
 }
+
+export type RateLimitKeyStrategy =
+  | "actor"
+  | "ip"
+  | "actor_or_ip"
+  | "actor_and_ip"
+  | "global";
 
 export class RateLimiter {
   private readonly backend: "memory" | "db";
@@ -258,15 +265,75 @@ export class RateLimiter {
 
 export function createRateLimitMiddleware(
   rateLimiter: RateLimiter,
-  options: { keyPrefix: string; max: number; windowMs: number }
+  options: {
+    keyPrefix: string;
+    max: number;
+    windowMs: number;
+    keyStrategy?: RateLimitKeyStrategy;
+    keyResolver?: (req: Request) => string | undefined;
+  }
 ): RequestHandler {
   return (req, _res, next) => {
-    const actor = req.userId ?? req.ip ?? "unknown";
-    const key = `${options.keyPrefix}:${actor}:${req.path}`;
+    const key = buildRateLimitKey(req, options);
     const result = rateLimiter.consume(key, options.max, options.windowMs);
     if (!result.allowed) {
       return next(new AppError("Rate limit excedido, reintenta luego", 429, { resetAt: result.resetAt }));
     }
     return next();
   };
+}
+
+function buildRateLimitKey(
+  req: Request,
+  options: {
+    keyPrefix: string;
+    keyStrategy?: RateLimitKeyStrategy;
+    keyResolver?: (req: Request) => string | undefined;
+  }
+) {
+  const strategy = options.keyStrategy ?? "actor_or_ip";
+  const actor = normalizeKeyPart(req.userId, "anonymous");
+  const ip = normalizeKeyPart(req.ip, "unknown-ip");
+
+  let base = "all";
+  switch (strategy) {
+    case "actor":
+      base = actor;
+      break;
+    case "ip":
+      base = ip;
+      break;
+    case "actor_and_ip":
+      base = `${actor}@${ip}`;
+      break;
+    case "global":
+      base = "all";
+      break;
+    case "actor_or_ip":
+    default:
+      base = req.userId ? actor : ip;
+      break;
+  }
+
+  const customSegment = normalizeKeyPart(options.keyResolver?.(req), "");
+  const parts = [normalizeKeyPart(options.keyPrefix, "rate-limit"), base];
+  if (customSegment) {
+    parts.push(customSegment);
+  }
+
+  return parts.join(":");
+}
+
+function normalizeKeyPart(raw: unknown, fallback: string) {
+  if (typeof raw !== "string") {
+    return fallback;
+  }
+
+  const sanitized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._@:-]/g, "_")
+    .slice(0, 160);
+
+  return sanitized || fallback;
 }

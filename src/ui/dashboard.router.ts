@@ -269,6 +269,8 @@ function renderDashboardHtml(token: string, role: string) {
         <button data-module="projects" type="button">Projects</button>
         <button data-module="automations" type="button">Automations</button>
         <button data-module="chat" type="button">Chat Timeline</button>
+        <button data-module="memory" type="button">Memory</button>
+        <button data-module="permissions" type="button">Permissions</button>
       </nav>
       <div class="sub" style="margin-top:auto; line-height:1.6;">
         /login (secure entry)<br/>
@@ -291,6 +293,16 @@ function renderDashboardHtml(token: string, role: string) {
       <div class="views">
         <section class="view active" data-view="dashboard">
           <div class="status" id="status-dashboard"></div>
+          <section class="card">
+            <h2>Flujo Rapido (3 pasos)</h2>
+            <div class="inline">
+              <button class="fit" data-action="nav-module" data-target-module="projects" type="button">1) Proyecto + tarea</button>
+              <button class="fit" data-action="nav-module" data-target-module="automations" type="button">2) Regla automatica</button>
+              <button class="fit" data-action="nav-module" data-target-module="chat" type="button">3) Ver timeline</button>
+            </div>
+            <div class="sub" style="line-height:1.6;">Objetivo: crear tarea y validar que aparezca en chat/memoria con trazabilidad.</div>
+          </section>
+          <div style="height:10px"></div>
           <section class="card">
             <h2>Metricas Operativas</h2>
             <div class="stats">
@@ -318,50 +330,57 @@ function renderDashboardHtml(token: string, role: string) {
               </table>
             </section>
             <section class="card">
-              <h2>Aprobaciones + Runs</h2>
-              <table>
-                <thead><tr><th>ID</th><th>Action</th><th>Status</th><th>Ops</th></tr></thead>
-                <tbody id="approvalsBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
-              </table>
-              <div style="height:8px"></div>
+              <h2>Runs recientes</h2>
               <table>
                 <thead><tr><th>Rule</th><th>Status</th><th>Attempts</th><th>Event</th></tr></thead>
                 <tbody id="runsBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
               </table>
+              <div class="sub" style="margin-top:8px;">Aprobaciones y auditoria se operan en el modulo Permissions.</div>
             </section>
           </div>
-          <div style="height:10px"></div>
-          <section class="card">
-            <h2>Memorias Compartidas</h2>
-            <div class="controls">
-              <input id="fProject" placeholder="project_id" />
-              <input id="fAgent" placeholder="agent_id" />
-              <select id="fScope"><option value="">scope</option><option value="global">global</option><option value="proyecto">proyecto</option><option value="privado">privado</option></select>
-              <input id="fType" placeholder="tipo" />
-              <input id="fFrom" placeholder="desde ISO" />
-              <input id="fTo" placeholder="hasta ISO" />
-            </div>
-            <div class="inline">
-              <input id="fQuery" placeholder="buscar semantica/texto" />
-              <button class="fit" id="memoryFilterButton" type="button">Filtrar</button>
-            </div>
-            <table>
-              <thead><tr><th>ID</th><th>Proyecto</th><th>Agente</th><th>Scope</th><th>Tipo</th><th>Contenido</th><th>Autor</th><th>Fecha</th><th>Ops</th></tr></thead>
-              <tbody id="memoryBody"><tr><td colspan="9">Sin datos</td></tr></tbody>
-            </table>
-          </section>
         </section>
 
         <section class="view" data-view="projects">
           <div class="status" id="status-projects"></div>
-          <section class="card">
-            <h2>Crear Proyecto</h2>
-            <form id="projectCreateForm" class="inline">
-              <input id="projectName" required minlength="3" placeholder="Nombre del proyecto" />
-              <select id="projectStatus"><option value="active">active</option><option value="paused">paused</option><option value="done">done</option></select>
-              <button class="fit" type="submit">Crear</button>
-            </form>
-          </section>
+          <div class="grid2">
+            <section class="card">
+              <h2>Paso 1: Crear Proyecto</h2>
+              <form id="projectCreateForm" class="inline">
+                <input id="projectName" required minlength="3" placeholder="Nombre del proyecto" />
+                <select id="projectStatus"><option value="active">active</option><option value="paused">paused</option><option value="done">done</option></select>
+                <button class="fit" type="submit">Crear</button>
+              </form>
+              <div class="sub" style="margin-top:6px;">Luego crea tareas para activar automatizaciones.</div>
+              <div style="height:10px"></div>
+              <h2>Paso 2: Crear Tarea</h2>
+              <form id="taskCreateForm" class="controls" style="margin-bottom:0;">
+                <select id="taskProjectId">
+                  <option value="">Selecciona proyecto</option>
+                </select>
+                <input id="taskTitle" required minlength="3" placeholder="Titulo de tarea" />
+                <select id="taskStatus">
+                  <option value="todo">todo</option>
+                  <option value="in_progress">in_progress</option>
+                  <option value="done">done</option>
+                </select>
+                <input id="taskAssignee" placeholder="assignee opcional" />
+                <button type="submit">Crear tarea</button>
+              </form>
+            </section>
+            <section class="card">
+              <h2>Paso 3: Ver y mover tareas</h2>
+              <div class="inline">
+                <select id="tasksProjectFilter">
+                  <option value="">Selecciona proyecto</option>
+                </select>
+                <button class="fit" id="tasksRefreshButton" type="button">Cargar tareas</button>
+              </div>
+              <table>
+                <thead><tr><th>ID</th><th>Titulo</th><th>Status</th><th>Assignee</th><th>Updated</th><th>Ops</th></tr></thead>
+                <tbody id="tasksBody"><tr><td colspan="6">Selecciona un proyecto para ver tareas</td></tr></tbody>
+              </table>
+            </section>
+          </div>
           <div style="height:10px"></div>
           <section class="card">
             <h2>Lista de Proyectos</h2>
@@ -425,6 +444,49 @@ function renderDashboardHtml(token: string, role: string) {
             </table>
           </section>
         </section>
+
+        <section class="view" data-view="memory">
+          <div class="status" id="status-memory"></div>
+          <section class="card">
+            <h2>Memorias Compartidas</h2>
+            <div class="controls">
+              <input id="fProject" placeholder="project_id" />
+              <input id="fAgent" placeholder="agent_id" />
+              <select id="fScope"><option value="">scope</option><option value="global">global</option><option value="proyecto">proyecto</option><option value="privado">privado</option></select>
+              <input id="fType" placeholder="tipo" />
+              <input id="fFrom" placeholder="desde ISO" />
+              <input id="fTo" placeholder="hasta ISO" />
+            </div>
+            <div class="inline">
+              <input id="fQuery" placeholder="buscar semantica/texto" />
+              <button class="fit" id="memoryFilterButton" type="button">Filtrar</button>
+            </div>
+            <table>
+              <thead><tr><th>ID</th><th>Proyecto</th><th>Agente</th><th>Scope</th><th>Tipo</th><th>Contenido</th><th>Autor</th><th>Fecha</th><th>Ops</th></tr></thead>
+              <tbody id="memoryBody"><tr><td colspan="9">Sin datos</td></tr></tbody>
+            </table>
+          </section>
+        </section>
+
+        <section class="view" data-view="permissions">
+          <div class="status" id="status-permissions"></div>
+          <div class="grid2">
+            <section class="card">
+              <h2>Aprobaciones pendientes</h2>
+              <table>
+                <thead><tr><th>ID</th><th>Action</th><th>Status</th><th>Ops</th></tr></thead>
+                <tbody id="approvalsBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+              </table>
+            </section>
+            <section class="card">
+              <h2>Auditoria agregada</h2>
+              <table>
+                <thead><tr><th>Actor</th><th>Action</th><th>Resource</th><th>Total</th></tr></thead>
+                <tbody id="permissionsAuditBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+              </table>
+            </section>
+          </div>
+        </section>
       </div>
     </main>
   </div>
@@ -433,11 +495,17 @@ function renderDashboardHtml(token: string, role: string) {
     const token = ${JSON.stringify(token)};
     const modules = {
       dashboard: ["Dashboard", "salud, memoria y aprobaciones"],
-      projects: ["Projects", "crud ligero de proyectos"],
+      projects: ["Projects", "flujo guiado de proyecto y tareas"],
       automations: ["Automations", "reglas, estado y runs"],
-      chat: ["Chat Timeline", "mensajes recientes con filtros"]
+      chat: ["Chat Timeline", "mensajes recientes con filtros"],
+      memory: ["Memory", "busqueda y acciones sobre memoria compartida"],
+      permissions: ["Permissions", "aprobaciones y trazabilidad de acciones sensibles"]
     };
-    const state = { current: "dashboard" };
+    const state = {
+      current: "dashboard",
+      projects: [],
+      selectedProjectId: ""
+    };
 
     function q(id) { return document.getElementById(id); }
 
@@ -466,6 +534,19 @@ function renderDashboardHtml(token: string, role: string) {
       const tbody = q(tbodyId);
       if (!tbody) return;
       tbody.innerHTML = '<tr><td colspan="' + colspan + '">' + esc(text) + '</td></tr>';
+    }
+
+    function populateProjectSelects(projects) {
+      const selects = [q("taskProjectId"), q("tasksProjectFilter")];
+      selects.forEach((select) => {
+        if (!(select instanceof HTMLSelectElement)) return;
+        const currentValue = select.value;
+        select.innerHTML = '<option value="">Selecciona proyecto</option>' +
+          projects.map((item) => '<option value="' + esc(item.id) + '">' + esc(item.name) + ' (' + esc(item.status) + ')</option>').join("");
+        if (currentValue && projects.some((item) => item.id === currentValue)) {
+          select.value = currentValue;
+        }
+      });
     }
 
     function pill(value) {
@@ -522,6 +603,12 @@ function renderDashboardHtml(token: string, role: string) {
       });
       q("moduleTitle").textContent = modules[moduleName][0];
       q("moduleSubtitle").textContent = modules[moduleName][1];
+      if (moduleName === "chat" && state.selectedProjectId) {
+        const input = q("chatProjectId");
+        if (input && !input.value) {
+          input.value = state.selectedProjectId;
+        }
+      }
       loadCurrent();
     }
 
@@ -529,18 +616,18 @@ function renderDashboardHtml(token: string, role: string) {
       if (state.current === "dashboard") return loadDashboard();
       if (state.current === "projects") return loadProjects();
       if (state.current === "automations") return loadAutomations();
-      return loadChatTimeline();
+      if (state.current === "chat") return loadChatTimeline();
+      if (state.current === "memory") return loadMemoryModule();
+      return loadPermissionsModule();
     }
     async function loadDashboard() {
       setStatus("dashboard", "Cargando dashboard...", "");
-      setTableMessage("approvalsBody", 4, "Cargando...");
       setTableMessage("runsBody", 4, "Cargando...");
       setTableMessage("rlTopBody", 2, "Cargando...");
       try {
-        const [metrics, memoryMetrics, approvals, runs, rateLimit] = await Promise.all([
+        const [metrics, memoryMetrics, runs, rateLimit] = await Promise.all([
           fetchJson("/v1/ops/metrics"),
           fetchJson("/v1/ops/memory/metrics"),
-          fetchJson("/v1/policy/approvals?status=pending"),
           fetchJson("/v1/automation/runs"),
           fetchJson("/v1/ops/rate-limit/health?limit=6")
         ]);
@@ -565,17 +652,6 @@ function renderDashboardHtml(token: string, role: string) {
           ? '<tr><td colspan="2">Sin bloqueos</td></tr>'
           : blocked.map((item) => '<tr><td class="mono">' + esc(item.key) + '</td><td>' + esc(item.blockedCount) + '</td></tr>').join("");
 
-        q("approvalsBody").innerHTML = (approvals || []).length === 0
-          ? '<tr><td colspan="4">Sin pendientes</td></tr>'
-          : approvals.map((item) => (
-              '<tr>' +
-                '<td class="mono">' + esc(item.id) + '</td>' +
-                '<td class="mono">' + esc(item.actionType) + '</td>' +
-                '<td>' + pill(item.status) + '</td>' +
-                '<td><button data-action="approval-approve" data-approval-id="' + esc(item.id) + '">approve</button> <button data-action="approval-reject" data-approval-id="' + esc(item.id) + '">reject</button></td>' +
-              '</tr>'
-            )).join("");
-
         q("runsBody").innerHTML = (runs || []).length === 0
           ? '<tr><td colspan="4">Sin runs</td></tr>'
           : runs.slice(0, 10).map((item) => (
@@ -587,7 +663,6 @@ function renderDashboardHtml(token: string, role: string) {
               '</tr>'
             )).join("");
 
-        await loadMemoryPanel();
         setStatus("dashboard", "", "");
       } catch (error) {
         reportError("dashboard", error);
@@ -634,13 +709,69 @@ function renderDashboardHtml(token: string, role: string) {
       }
     }
 
+    async function loadMemoryModule() {
+      setStatus("memory", "Cargando memoria...", "");
+      await loadMemoryPanel();
+      setStatus("memory", "", "");
+    }
+
+    async function loadPermissionsModule() {
+      setStatus("permissions", "Cargando aprobaciones y auditoria...", "");
+      setTableMessage("approvalsBody", 4, "Cargando...");
+      setTableMessage("permissionsAuditBody", 4, "Cargando...");
+
+      try {
+        const [approvals, auditAggregated] = await Promise.all([
+          fetchJson("/v1/policy/approvals?status=pending"),
+          fetchJson("/v1/ops/audit/aggregated?limit=20")
+        ]);
+
+        q("approvalsBody").innerHTML = !Array.isArray(approvals) || approvals.length === 0
+          ? '<tr><td colspan="4">No hay aprobaciones pendientes</td></tr>'
+          : approvals.map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.id) + '</td>' +
+                '<td class="mono">' + esc(item.actionType) + '</td>' +
+                '<td>' + pill(item.status) + '</td>' +
+                '<td><button data-action="approval-approve" data-approval-id="' + esc(item.id) + '">approve</button> <button data-action="approval-reject" data-approval-id="' + esc(item.id) + '">reject</button></td>' +
+              '</tr>'
+            )).join("");
+
+        q("permissionsAuditBody").innerHTML =
+          !Array.isArray(auditAggregated) || auditAggregated.length === 0
+            ? '<tr><td colspan="4">No hay eventos de auditoria en el rango actual</td></tr>'
+            : auditAggregated.map((item) => (
+                '<tr>' +
+                  '<td class="mono">' + esc(item.actorId || "-") + '</td>' +
+                  '<td class="mono">' + esc(item.action || "-") + '</td>' +
+                  '<td class="mono">' + esc(item.resource || "-") + '</td>' +
+                  '<td>' + esc(item.total || 0) + '</td>' +
+                '</tr>'
+              )).join("");
+
+        setStatus("permissions", "", "");
+      } catch (error) {
+        reportError("permissions", error);
+      }
+    }
+
     async function loadProjects() {
       setStatus("projects", "Cargando proyectos...", "");
       setTableMessage("projectsBody", 5, "Cargando...");
+      setTableMessage("tasksBody", 6, "Cargando...");
       try {
         const projects = await fetchJson("/v1/projects");
+        state.projects = Array.isArray(projects) ? projects : [];
+        populateProjectSelects(state.projects);
+
+        if (!state.selectedProjectId && state.projects.length > 0) {
+          state.selectedProjectId = state.projects[0].id;
+          if (q("tasksProjectFilter")) q("tasksProjectFilter").value = state.selectedProjectId;
+          if (q("taskProjectId")) q("taskProjectId").value = state.selectedProjectId;
+        }
+
         q("projectsBody").innerHTML = !Array.isArray(projects) || projects.length === 0
-          ? '<tr><td colspan="5">No hay proyectos creados</td></tr>'
+          ? '<tr><td colspan="5">No hay proyectos creados. Usa "Paso 1" para crear el primero.</td></tr>'
           : projects.map((item) => (
               '<tr>' +
                 '<td class="mono">' + esc(item.id) + '</td>' +
@@ -650,7 +781,14 @@ function renderDashboardHtml(token: string, role: string) {
                 '<td><div class="inline"><select data-field="project-status"><option value="active"' + (item.status === "active" ? " selected" : "") + '>active</option><option value="paused"' + (item.status === "paused" ? " selected" : "") + '>paused</option><option value="done"' + (item.status === "done" ? " selected" : "") + '>done</option></select><button class="fit" data-action="project-update-status" data-project-id="' + esc(item.id) + '">guardar</button></div></td>' +
               '</tr>'
             )).join("");
-        setStatus("projects", (projects || []).length ? "" : "No data: crea tu primer proyecto.", (projects || []).length ? "" : "ok");
+
+        if (state.selectedProjectId) {
+          await loadProjectTasks(state.selectedProjectId);
+          setStatus("projects", "Proyecto y tareas listos para operar.", "ok");
+        } else {
+          setTableMessage("tasksBody", 6, "No hay tareas porque aun no hay proyectos.");
+          setStatus("projects", "No data: crea tu primer proyecto y luego una tarea.", "ok");
+        }
       } catch (error) {
         reportError("projects", error);
       }
@@ -739,12 +877,81 @@ function renderDashboardHtml(token: string, role: string) {
       if (!name) return;
       setStatus("projects", "Creando proyecto...", "");
       try {
-        await fetchJson("/v1/projects", { method: "POST", body: JSON.stringify({ name, status }) });
+        const project = await fetchJson("/v1/projects", {
+          method: "POST",
+          body: JSON.stringify({ name, status })
+        });
         q("projectName").value = "";
+        if (project && project.id) {
+          state.selectedProjectId = String(project.id);
+        }
         setStatus("projects", "Proyecto creado.", "ok");
         await loadProjects();
       } catch (error) {
         reportError("projects", error);
+      }
+    }
+
+    async function createTask(event) {
+      event.preventDefault();
+      const projectId = q("taskProjectId").value;
+      const title = q("taskTitle").value.trim();
+      const status = q("taskStatus").value;
+      const assignee = q("taskAssignee").value.trim();
+
+      if (!projectId) {
+        setStatus("projects", "Selecciona un proyecto antes de crear tarea.", "error");
+        return;
+      }
+      if (!title) {
+        setStatus("projects", "El titulo de la tarea es obligatorio.", "error");
+        return;
+      }
+
+      setStatus("projects", "Creando tarea...", "");
+      try {
+        await fetchJson("/v1/projects/" + encodeURIComponent(projectId) + "/tasks", {
+          method: "POST",
+          body: JSON.stringify({
+            title,
+            status: status || "todo",
+            assignee: assignee || undefined
+          })
+        });
+        q("taskTitle").value = "";
+        q("taskAssignee").value = "";
+        state.selectedProjectId = projectId;
+        q("tasksProjectFilter").value = projectId;
+        setStatus("projects", "Tarea creada. Debe disparar automatizaciones si hay reglas activas.", "ok");
+        await loadProjectTasks(projectId);
+      } catch (error) {
+        reportError("projects", error);
+      }
+    }
+
+    async function loadProjectTasks(projectId) {
+      if (!projectId) {
+        setTableMessage("tasksBody", 6, "Selecciona un proyecto para ver tareas.");
+        return;
+      }
+
+      setTableMessage("tasksBody", 6, "Cargando tareas...");
+      try {
+        const tasks = await fetchJson("/v1/projects/" + encodeURIComponent(projectId) + "/tasks");
+        q("tasksBody").innerHTML = !Array.isArray(tasks) || tasks.length === 0
+          ? '<tr><td colspan="6">No hay tareas en este proyecto. Usa "Paso 2" para crear la primera.</td></tr>'
+          : tasks.map((task) => (
+              '<tr>' +
+                '<td class="mono">' + esc(task.id) + '</td>' +
+                '<td>' + esc(task.title) + '</td>' +
+                '<td>' + pill(task.status) + '</td>' +
+                '<td class="mono">' + esc(task.assignee || "-") + '</td>' +
+                '<td class="mono">' + esc(task.updatedAt || task.createdAt || "-") + '</td>' +
+                '<td><div class="inline"><select data-field="task-status"><option value="todo"' + (task.status === "todo" ? " selected" : "") + '>todo</option><option value="in_progress"' + (task.status === "in_progress" ? " selected" : "") + '>in_progress</option><option value="done"' + (task.status === "done" ? " selected" : "") + '>done</option></select><button class="fit" data-action="task-update-status" data-project-id="' + esc(projectId) + '" data-task-id="' + esc(task.id) + '">guardar</button></div></td>' +
+              '</tr>'
+            )).join("");
+      } catch (error) {
+        setTableMessage("tasksBody", 6, "Error cargando tareas: " + (error.message || "fallo"));
       }
     }
 
@@ -800,6 +1007,26 @@ function renderDashboardHtml(token: string, role: string) {
       }
     }
 
+    async function updateTaskStatus(projectId, taskId, row) {
+      const select = row ? row.querySelector('select[data-field="task-status"]') : null;
+      const status = select ? select.value : null;
+      if (!status) return;
+
+      try {
+        await fetchJson(
+          "/v1/projects/" + encodeURIComponent(projectId) + "/tasks/" + encodeURIComponent(taskId) + "/status",
+          {
+            method: "PATCH",
+            body: JSON.stringify({ status })
+          }
+        );
+        setStatus("projects", "Estado de tarea actualizado.", "ok");
+        await loadProjectTasks(projectId);
+      } catch (error) {
+        reportError("projects", error);
+      }
+    }
+
     async function toggleRule(ruleId, enabled) {
       try {
         await fetchJson("/v1/automation/rules/" + encodeURIComponent(ruleId) + "/status", {
@@ -816,18 +1043,18 @@ function renderDashboardHtml(token: string, role: string) {
     async function approveAction(approvalId, action) {
       try {
         await fetchJson("/v1/policy/approvals/" + encodeURIComponent(approvalId) + "/" + action, { method: "POST" });
-        await loadDashboard();
+        await loadPermissionsModule();
       } catch (error) {
-        reportError("dashboard", error);
+        reportError("permissions", error);
       }
     }
 
     async function memoryAction(memoryId, action) {
       try {
         await fetchJson("/v1/memory/" + encodeURIComponent(memoryId) + "/" + action, { method: "POST" });
-        await loadMemoryPanel();
+        await loadMemoryModule();
       } catch (error) {
-        reportError("dashboard", error);
+        reportError("memory", error);
       }
     }
 
@@ -845,8 +1072,27 @@ function renderDashboardHtml(token: string, role: string) {
         window.location.href = "/login";
       });
 
-      q("memoryFilterButton").addEventListener("click", () => loadMemoryPanel());
+      q("memoryFilterButton").addEventListener("click", () => loadMemoryModule());
       q("projectCreateForm").addEventListener("submit", createProject);
+      q("taskCreateForm").addEventListener("submit", createTask);
+      q("tasksRefreshButton").addEventListener("click", () => {
+        const projectId = q("tasksProjectFilter").value;
+        state.selectedProjectId = projectId || "";
+        loadProjectTasks(projectId);
+      });
+      q("tasksProjectFilter").addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) return;
+        state.selectedProjectId = target.value || "";
+        if (q("taskProjectId")) q("taskProjectId").value = target.value;
+        loadProjectTasks(target.value);
+      });
+      q("taskProjectId").addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) return;
+        state.selectedProjectId = target.value || "";
+        if (q("tasksProjectFilter")) q("tasksProjectFilter").value = target.value;
+      });
       q("automationCreateForm").addEventListener("submit", createRule);
       q("chatFilterForm").addEventListener("submit", (event) => {
         event.preventDefault();
@@ -904,11 +1150,27 @@ function renderDashboardHtml(token: string, role: string) {
           return;
         }
 
+        if (action === "task-update-status") {
+          const projectId = target.getAttribute("data-project-id");
+          const taskId = target.getAttribute("data-task-id");
+          const row = target.closest("tr");
+          if (!projectId || !taskId || !row) return;
+          updateTaskStatus(projectId, taskId, row);
+          return;
+        }
+
         if (action === "project-update-status") {
           const projectId = target.getAttribute("data-project-id");
           const row = target.closest("tr");
           if (!projectId || !row) return;
           updateProjectStatus(projectId, row);
+          return;
+        }
+
+        if (action === "nav-module") {
+          const targetModule = target.getAttribute("data-target-module");
+          if (!targetModule || !modules[targetModule]) return;
+          activate(targetModule);
         }
       });
     }

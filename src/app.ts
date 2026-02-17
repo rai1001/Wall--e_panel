@@ -19,6 +19,7 @@ import { createRateLimitMiddleware } from "./shared/http/rate-limit";
 import { createRequestMetricsMiddleware } from "./ops/request-metrics.middleware";
 import { createDashboardRouter } from "./ui/dashboard.router";
 import { renderLoginPageHtml } from "./ui/login.page";
+import { resolveTrustProxySetting } from "./config/network";
 
 function readOpenApiSpec() {
   const filePath = path.join(process.cwd(), "docs", "openapi.yaml");
@@ -26,6 +27,20 @@ function readOpenApiSpec() {
     return fs.readFileSync(filePath, "utf8");
   }
   return "openapi: 3.0.0\ninfo:\n  title: Asistente API\n  version: 0.1.0\npaths: {}\n";
+}
+
+function readPositiveIntEnv(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
 }
 
 function mountDomainRouters(router: express.Router, context: AppContext) {
@@ -82,7 +97,12 @@ function mountDomainRouters(router: express.Router, context: AppContext) {
 
 export function createApp(context: AppContext = createAppContext()) {
   const app = express();
+  app.set("trust proxy", resolveTrustProxySetting());
   app.disable("x-powered-by");
+
+  const globalRateLimitMax = readPositiveIntEnv("RATE_LIMIT_GLOBAL_MAX", 600);
+  const globalRateLimitWindowMs = readPositiveIntEnv("RATE_LIMIT_GLOBAL_WINDOW_MS", 60_000);
+
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -109,8 +129,8 @@ export function createApp(context: AppContext = createAppContext()) {
   app.use(
     createRateLimitMiddleware(context.rateLimiter, {
       keyPrefix: "global",
-      max: 600,
-      windowMs: 60_000
+      max: globalRateLimitMax,
+      windowMs: globalRateLimitWindowMs
     })
   );
 
