@@ -55,7 +55,7 @@ describe("AutomationService", () => {
     });
 
     const messages = chatService.listMessages(conversation.id);
-    const memories = memoryService.search({ tags: ["automation"] });
+    const memories = await memoryService.search({ tags: ["automation"] });
     const runs = automationService.listRunLogs();
 
     expect(messages.length).toBeGreaterThanOrEqual(1);

@@ -36,7 +36,11 @@ export function createAppContext(options: AppContextOptions = {}): AppContext {
   const approvalService = new ApprovalService(dbClient.connection);
   const auditService = new AuditService(dbClient.connection);
   const metricsService = new MetricsService();
-  const rateLimiter = new RateLimiter();
+  const configuredRateLimitStore = (process.env.RATE_LIMIT_STORE ?? "db").toLowerCase();
+  const rateLimiter = new RateLimiter({
+    backend: configuredRateLimitStore === "memory" ? "memory" : "db",
+    connection: dbClient.connection
+  });
   const chatService = new ChatService(eventBus, dbClient.connection);
   const projectService = new ProjectService(eventBus, dbClient.connection);
   const memoryService = new MemoryService(eventBus, dbClient.connection);

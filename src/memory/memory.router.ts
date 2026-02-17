@@ -108,7 +108,7 @@ export function createMemoryRouter(memoryService: MemoryService, auditService: A
       if (includeBlocked) searchInput.includeBlocked = true;
       if (req.query.limit) searchInput.limit = Number(req.query.limit);
 
-      const result = memoryService.search(searchInput);
+      const result = await memoryService.search(searchInput);
 
       res.status(200).json(result);
     })
@@ -142,7 +142,7 @@ export function createMemoryRouter(memoryService: MemoryService, auditService: A
       if (req.query.activeProjectId) searchInput.activeProjectId = String(req.query.activeProjectId);
       if (req.query.currentAgentId) searchInput.currentAgentId = String(req.query.currentAgentId);
 
-      const result = memoryService.search(searchInput);
+      const result = await memoryService.search(searchInput);
 
       res.status(200).json(result);
     })
@@ -153,7 +153,7 @@ export function createMemoryRouter(memoryService: MemoryService, auditService: A
     requirePermission("update", "memoria"),
     validateBody(reindexBodySchema),
     asyncHandler(async (req, res) => {
-      const result = memoryService.reindexIncremental({
+      const result = await memoryService.reindexIncremental({
         limit: req.body.limit,
         since: req.body.since
       });

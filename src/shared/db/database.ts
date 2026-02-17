@@ -121,6 +121,9 @@ function migrate(connection: Database.Database) {
       embedding_json TEXT NOT NULL,
       content_hash TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      embedding_provider TEXT,
+      embedding_model TEXT,
+      embedding_version TEXT,
       FOREIGN KEY(memory_id) REFERENCES memory_items(id) ON DELETE CASCADE
     );
 
@@ -191,12 +194,21 @@ function migrate(connection: Database.Database) {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+      bucket_key TEXT NOT NULL,
+      window_start INTEGER NOT NULL,
+      count INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (bucket_key, window_start)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory_items(scope);
     CREATE INDEX IF NOT EXISTS idx_runs_rule ON run_logs(rule_id);
     CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
     CREATE INDEX IF NOT EXISTS idx_dead_letters_rule ON dead_letters(rule_id);
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_updated ON rate_limit_buckets(updated_at);
   `);
 
   ensureColumn(connection, "automation_rules", "trigger_mode", "TEXT");
@@ -214,12 +226,16 @@ function migrate(connection: Database.Database) {
   ensureColumn(connection, "memory_items", "archived", "INTEGER DEFAULT 0");
   ensureColumn(connection, "memory_items", "archived_reason", "TEXT");
   ensureColumn(connection, "memory_items", "expires_at", "TEXT");
+  ensureColumn(connection, "memory_embeddings", "embedding_provider", "TEXT");
+  ensureColumn(connection, "memory_embeddings", "embedding_model", "TEXT");
+  ensureColumn(connection, "memory_embeddings", "embedding_version", "TEXT");
 
   ensureIndex(connection, "idx_memory_project", "memory_items", "project_id");
   ensureIndex(connection, "idx_memory_agent", "memory_items", "agent_id");
   ensureIndex(connection, "idx_memory_type", "memory_items", "memory_type");
   ensureIndex(connection, "idx_memory_archived", "memory_items", "archived");
   ensureIndex(connection, "idx_memory_expires", "memory_items", "expires_at");
+  ensureIndex(connection, "idx_rate_limit_updated", "rate_limit_buckets", "updated_at");
 }
 
 function seed(connection: Database.Database) {

@@ -8,14 +8,14 @@ function parseArg(name: string) {
   return prefixed.slice(name.length + 1);
 }
 
-function run() {
+async function run() {
   const context = createAppContext();
   try {
     const limitArg = parseArg("--limit");
     const since = parseArg("--since");
     const limit = limitArg ? Number(limitArg) : undefined;
 
-    const result = context.memoryService.reindexIncremental({
+    const result = await context.memoryService.reindexIncremental({
       limit: Number.isFinite(limit ?? NaN) ? limit : undefined,
       since
     });
@@ -27,4 +27,4 @@ function run() {
   }
 }
 
-run();
+void run();

@@ -22,9 +22,9 @@ describe("MemoryService", () => {
       tags: ["chat"]
     });
 
-    const byText = service.search({ q: "onboarding" });
-    const byTags = service.search({ tags: ["project", "task"] });
-    const byScope = service.search({ scope: "chat" });
+    const byText = await service.search({ q: "onboarding" });
+    const byTags = await service.search({ tags: ["project", "task"] });
+    const byScope = await service.search({ scope: "chat" });
 
     expect(byText).toHaveLength(1);
     expect(byTags).toHaveLength(1);
@@ -48,7 +48,7 @@ describe("MemoryService", () => {
       occurredAt: new Date().toISOString()
     });
 
-    const memories = service.search({ tags: ["task_created"] });
+    const memories = await service.search({ tags: ["task_created"] });
     expect(memories.length).toBeGreaterThanOrEqual(1);
     dbClient.close();
   });

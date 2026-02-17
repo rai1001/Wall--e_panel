@@ -4,7 +4,16 @@ import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { createId } from "../shared/id";
 import { AppError, NotFoundError } from "../shared/http/errors";
 import { MemoryItem } from "../types/domain";
-import { cosineSimilarity, createEmbedding, embeddingDimension, lexicalScore } from "./embedding";
+import {
+  cosineSimilarity,
+  createEmbedding,
+  createEmbeddingAsync,
+  embeddingDimension,
+  embeddingModel,
+  embeddingProvider,
+  embeddingVersion,
+  lexicalScore
+} from "./embedding";
 
 export interface SaveMemoryInput {
   projectId?: string;
@@ -83,8 +92,12 @@ interface MemoryRow {
 
 interface EmbeddingRow {
   memory_id: string;
+  embedding_dim: number;
   embedding_json: string;
   content_hash: string;
+  embedding_provider: string | null;
+  embedding_model: string | null;
+  embedding_version: string | null;
 }
 
 export class MemoryService {
@@ -195,7 +208,7 @@ export class MemoryService {
         item.expiresAt ?? null
       );
 
-    this.upsertEmbedding(item.id, item.content, item.contentHash ?? "", item.updatedAt ?? timestamp);
+    await this.upsertEmbedding(item.id, item.content, item.contentHash ?? "", item.updatedAt ?? timestamp);
 
     const event: DomainEvent = {
       type: "memory_saved",
@@ -213,7 +226,7 @@ export class MemoryService {
     return item;
   }
 
-  search(input: SearchMemoryInput): MemorySearchResult[] {
+  async search(input: SearchMemoryInput): Promise<MemorySearchResult[]> {
     const rows = this.queryRows(input);
     const limit = input.limit && input.limit > 0 ? Math.min(input.limit, 200) : 25;
     const tags = input.tags?.filter(Boolean) ?? [];
@@ -233,7 +246,7 @@ export class MemoryService {
       return true;
     });
 
-    const result = this.rankRows(filteredRows, input).slice(0, limit);
+    const result = (await this.rankRows(filteredRows, input)).slice(0, limit);
     return result;
   }
 
@@ -241,7 +254,7 @@ export class MemoryService {
     return this.queryRows({ includeArchived: true }).map((row) => this.mapMemory(row));
   }
 
-  reindexIncremental(options: { limit?: number; since?: string } = {}): ReindexResult {
+  async reindexIncremental(options: { limit?: number; since?: string } = {}): Promise<ReindexResult> {
     const limit = options.limit && options.limit > 0 ? Math.min(options.limit, 10_000) : 1000;
     const rows = this.connection
       .prepare(
@@ -268,18 +281,25 @@ export class MemoryService {
         const hash = row.content_hash ?? createContentHash(row.content, []);
         const existing = this.connection
           .prepare(
-            `SELECT memory_id, content_hash
+            `SELECT memory_id, embedding_dim, content_hash, embedding_provider, embedding_model, embedding_version
              FROM memory_embeddings
              WHERE memory_id = ?`
           )
           .get(row.id) as EmbeddingRow | undefined;
 
-        if (existing && existing.content_hash === hash) {
+        if (
+          existing &&
+          existing.content_hash === hash &&
+          existing.embedding_dim === embeddingDimension() &&
+          (existing.embedding_version ?? null) === embeddingVersion() &&
+          (existing.embedding_provider ?? null) === embeddingProvider() &&
+          (existing.embedding_model ?? null) === embeddingModel()
+        ) {
           skipped += 1;
           continue;
         }
 
-        this.upsertEmbedding(row.id, row.content, hash, row.updated_at ?? new Date().toISOString());
+        await this.upsertEmbedding(row.id, row.content, hash, row.updated_at ?? new Date().toISOString());
         processed += 1;
       } catch (_error) {
         failed += 1;
@@ -513,21 +533,25 @@ export class MemoryService {
     return this.mapMemory(row);
   }
 
-  private rankRows(rows: MemoryRow[], input: SearchMemoryInput) {
+  private async rankRows(rows: MemoryRow[], input: SearchMemoryInput) {
     const query = input.q?.trim();
-    const queryEmbedding = query ? createEmbedding(query) : null;
+    const queryEmbedding = query ? await createEmbeddingAsync(query) : null;
+    const localDimension = createEmbedding("").length;
     const embeddingMap = this.loadEmbeddings(rows.map((row) => row.id));
 
     const scored: MemorySearchResult[] = rows.map((row) => {
       const item = this.mapMemory(row);
       const lexical = query ? lexicalScore(query, item.content, item.tags) : 0;
-      const semantic =
-        query && queryEmbedding
-          ? cosineSimilarity(
-              queryEmbedding,
-              embeddingMap.get(item.id) ?? createEmbedding(item.content)
-            )
-          : 0;
+
+      let semantic = 0;
+      if (query && queryEmbedding) {
+        const stored = embeddingMap.get(item.id);
+        if (stored?.vector.length === queryEmbedding.length) {
+          semantic = cosineSimilarity(queryEmbedding, stored.vector);
+        } else if (queryEmbedding.length === localDimension) {
+          semantic = cosineSimilarity(queryEmbedding, createEmbedding(item.content));
+        }
+      }
 
       let priority = 0;
       if (input.activeProjectId && item.projectId === input.activeProjectId) {
@@ -604,23 +628,37 @@ export class MemoryService {
     return rows;
   }
 
-  private upsertEmbedding(memoryId: string, content: string, contentHash: string, updatedAt: string) {
-    const vector = createEmbedding(content);
+  private async upsertEmbedding(memoryId: string, content: string, contentHash: string, updatedAt: string) {
+    const vector = await createEmbeddingAsync(content);
     this.connection
       .prepare(
-        `INSERT INTO memory_embeddings (memory_id, embedding_dim, embedding_json, content_hash, updated_at)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO memory_embeddings (
+          memory_id, embedding_dim, embedding_json, content_hash, updated_at, embedding_provider, embedding_model, embedding_version
+        )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(memory_id) DO UPDATE SET
            embedding_dim = excluded.embedding_dim,
            embedding_json = excluded.embedding_json,
            content_hash = excluded.content_hash,
-           updated_at = excluded.updated_at`
+           updated_at = excluded.updated_at,
+           embedding_provider = excluded.embedding_provider,
+           embedding_model = excluded.embedding_model,
+           embedding_version = excluded.embedding_version`
       )
-      .run(memoryId, embeddingDimension(), JSON.stringify(vector), contentHash, updatedAt);
+      .run(
+        memoryId,
+        vector.length,
+        JSON.stringify(vector),
+        contentHash,
+        updatedAt,
+        embeddingProvider(),
+        embeddingModel(),
+        embeddingVersion()
+      );
   }
 
   private loadEmbeddings(memoryIds: string[]) {
-    const map = new Map<string, number[]>();
+    const map = new Map<string, { vector: number[]; version: string | null; provider: string | null; model: string | null }>();
     if (memoryIds.length === 0) {
       return map;
     }
@@ -628,7 +666,7 @@ export class MemoryService {
     const placeholders = memoryIds.map(() => "?").join(",");
     const rows = this.connection
       .prepare(
-        `SELECT memory_id, embedding_json, content_hash
+        `SELECT memory_id, embedding_dim, embedding_json, content_hash, embedding_provider, embedding_model, embedding_version
          FROM memory_embeddings
          WHERE memory_id IN (${placeholders})`
       )
@@ -636,7 +674,16 @@ export class MemoryService {
 
     for (const row of rows) {
       try {
-        map.set(row.memory_id, JSON.parse(row.embedding_json) as number[]);
+        const vector = JSON.parse(row.embedding_json) as number[];
+        if (!Array.isArray(vector) || vector.length !== row.embedding_dim) {
+          continue;
+        }
+        map.set(row.memory_id, {
+          vector,
+          version: row.embedding_version ?? null,
+          provider: row.embedding_provider ?? null,
+          model: row.embedding_model ?? null
+        });
       } catch {
         continue;
       }
