@@ -300,6 +300,9 @@ function renderDashboardHtml(token: string, role: string) {
               <button class="fit" data-action="nav-module" data-target-module="automations" type="button">2) Regla automatica</button>
               <button class="fit" data-action="nav-module" data-target-module="chat" type="button">3) Ver timeline</button>
             </div>
+            <div class="inline">
+              <button class="fit" data-action="bootstrap-flow" type="button">Crear flujo base (admin)</button>
+            </div>
             <div class="sub" style="line-height:1.6;">Objetivo: crear tarea y validar que aparezca en chat/memoria con trazabilidad.</div>
           </section>
           <div style="height:10px"></div>
@@ -1007,6 +1010,40 @@ function renderDashboardHtml(token: string, role: string) {
       }
     }
 
+    async function bootstrapFlow() {
+      setStatus("dashboard", "Creando flujo base...", "");
+      try {
+        const now = new Date();
+        const suffix = now.toISOString().slice(11, 19).replace(/:/g, "");
+        const payload = {
+          projectName: "Proyecto rapido " + suffix,
+          conversationTitle: "Conversacion rapida " + suffix,
+          ruleName: "Regla rapida " + suffix
+        };
+
+        const result = await fetchJson("/v1/onboarding/bootstrap-flow", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+
+        if (result && result.project && result.project.id) {
+          state.selectedProjectId = String(result.project.id);
+        }
+
+        setStatus(
+          "dashboard",
+          "Flujo base creado. Ve a Projects para crear tarea y validar la automatizacion.",
+          "ok"
+        );
+      } catch (error) {
+        if (error && error.status === 403) {
+          setStatus("dashboard", "Solo admin puede ejecutar bootstrap-flow.", "error");
+          return;
+        }
+        reportError("dashboard", error);
+      }
+    }
+
     async function updateTaskStatus(projectId, taskId, row) {
       const select = row ? row.querySelector('select[data-field="task-status"]') : null;
       const status = select ? select.value : null;
@@ -1171,6 +1208,11 @@ function renderDashboardHtml(token: string, role: string) {
           const targetModule = target.getAttribute("data-target-module");
           if (!targetModule || !modules[targetModule]) return;
           activate(targetModule);
+          return;
+        }
+
+        if (action === "bootstrap-flow") {
+          bootstrapFlow();
         }
       });
     }
