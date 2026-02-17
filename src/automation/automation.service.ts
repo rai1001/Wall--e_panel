@@ -231,6 +231,32 @@ export class AutomationService {
     return this.mapRule(row);
   }
 
+  setRuleEnabled(ruleId: string, enabled: boolean) {
+    const current = this.getRuleById(ruleId);
+    const nextEnabled = Boolean(enabled);
+
+    this.connection
+      .prepare(
+        `UPDATE automation_rules
+         SET enabled = ?
+         WHERE id = ?`
+      )
+      .run(nextEnabled ? 1 : 0, ruleId);
+
+    const updated: AutomationRule = {
+      ...current,
+      enabled: nextEnabled
+    };
+
+    if (nextEnabled) {
+      this.scheduleRule(updated);
+    } else {
+      this.stopScheduledRule(ruleId);
+    }
+
+    return updated;
+  }
+
   async testRule(ruleId: string, input: TestRuleInput = {}) {
     const rule = this.getRuleById(ruleId);
     const event: DomainEvent = {
@@ -273,11 +299,7 @@ export class AutomationService {
       return;
     }
 
-    const existing = this.scheduledTasks.get(rule.id);
-    if (existing) {
-      existing.stop();
-      this.scheduledTasks.delete(rule.id);
-    }
+    this.stopScheduledRule(rule.id);
 
     if (!cron.validate(rule.trigger.cron)) {
       return;
@@ -304,6 +326,16 @@ export class AutomationService {
     });
 
     this.scheduledTasks.set(rule.id, task);
+  }
+
+  private stopScheduledRule(ruleId: string) {
+    const scheduled = this.scheduledTasks.get(ruleId);
+    if (!scheduled) {
+      return;
+    }
+
+    scheduled.stop();
+    this.scheduledTasks.delete(ruleId);
   }
 
   private matches(rule: AutomationRule, event: DomainEvent) {

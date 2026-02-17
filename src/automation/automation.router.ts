@@ -77,6 +77,10 @@ const ruleParamSchema = z.object({
   id: z.string().min(1)
 });
 
+const updateRuleStatusBodySchema = z.object({
+  enabled: z.boolean()
+});
+
 function ensureSensitiveApproval(
   approvalService: ApprovalService,
   actorId: string,
@@ -198,6 +202,23 @@ export function createAutomationRouter(
     requirePermission("read", "automatizacion"),
     asyncHandler(async (_req, res) => {
       res.status(200).json(automationService.listRules());
+    })
+  );
+
+  router.patch(
+    "/rules/:id/status",
+    requirePermission("update", "automatizacion"),
+    validateParams(ruleParamSchema),
+    validateBody(updateRuleStatusBodySchema),
+    auditSensitiveAction(auditService, "toggle_rule", "automatizacion"),
+    asyncHandler(async (req, res) => {
+      const ruleId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+      if (!ruleId) {
+        throw new AppError("rule id requerido", 400);
+      }
+
+      const rule = automationService.setRuleEnabled(ruleId, req.body.enabled);
+      res.status(200).json(rule);
     })
   );
 

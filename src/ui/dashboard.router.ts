@@ -11,21 +11,19 @@ function renderDashboardHtml(token: string, role: string) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>OpenClaw Memory Control Deck</title>
+  <title>OpenClaw Control Deck</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0f141f;
-      --panel: #131f2f;
-      --panel-2: #0f1824;
-      --ink: #f0f7ff;
-      --muted: #8ea1b8;
-      --line: rgba(255,255,255,.14);
+      --ink: #eef3ff;
+      --muted: #96a6ba;
+      --line: rgba(255,255,255,.16);
       --accent: #ffd166;
       --ok: #2dd4bf;
       --bad: #ff6363;
+      --warn: #fbbf24;
     }
     * { box-sizing: border-box; }
     body {
@@ -33,235 +31,872 @@ function renderDashboardHtml(token: string, role: string) {
       color: var(--ink);
       font-family: "Space Grotesk", sans-serif;
       background:
-        radial-gradient(circle at 12% 20%, #2d3958 0%, transparent 33%),
-        radial-gradient(circle at 84% 20%, #63411f 0%, transparent 35%),
-        linear-gradient(160deg, #0d131d, #070b12);
+        radial-gradient(circle at 10% 15%, #27324d, transparent 33%),
+        radial-gradient(circle at 88% 20%, #614320, transparent 35%),
+        linear-gradient(165deg, #070b12, #0d1520 58%, #060a10);
       min-height: 100vh;
     }
-    .wrap { max-width: 1300px; margin: 0 auto; padding: 22px; }
-    h1 { margin: 0; font-size: clamp(26px, 4.3vw, 48px); text-transform: uppercase; letter-spacing: -.02em; }
-    .sub { margin-top: 6px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-family: "IBM Plex Mono", monospace; }
-    .grid { display: grid; gap: 14px; grid-template-columns: 1fr 1fr; margin-top: 16px; }
-    .card {
+    .shell {
+      width: min(1440px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 14px;
+      padding: 14px;
+    }
+    .sidebar, .main {
       border: 1px solid var(--line);
       border-radius: 16px;
-      padding: 14px;
-      background: linear-gradient(160deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
-      backdrop-filter: blur(4px);
+      background: linear-gradient(165deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+      backdrop-filter: blur(5px);
+      box-shadow: 0 22px 64px rgba(0,0,0,.34);
     }
-    .card h2 { margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: .09em; }
-    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-    .stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
-    .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }
-    .stat .v { font-size: 23px; font-weight: 700; margin-top: 4px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { text-align: left; border-bottom: 1px dashed var(--line); padding: 8px 6px; vertical-align: top; }
-    th { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: .08em; }
-    .mono { font-family: "IBM Plex Mono", monospace; }
-    .controls { display: grid; grid-template-columns: repeat(6, minmax(100px, 1fr)); gap: 8px; }
-    input, select {
-      width: 100%;
+    .sidebar {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: calc(100vh - 28px);
+      position: sticky;
+      top: 14px;
+    }
+    .brand {
+      text-transform: uppercase;
+      font-weight: 700;
+      font-size: 22px;
+      letter-spacing: -.03em;
+      line-height: .95;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .pill {
+      display: inline-block;
+      width: fit-content;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(255,255,255,.04);
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .pill.ok { color: var(--ok); }
+    .pill.bad { color: var(--bad); }
+    .pill.warn { color: var(--warn); }
+    .nav {
+      display: grid;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .nav button {
+      width: 100%;
+      text-align: left;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
       color: var(--ink);
-      padding: 7px 8px;
+      background: rgba(255,255,255,.03);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-family: "IBM Plex Mono", monospace;
+      cursor: pointer;
+    }
+    .nav button.active {
+      border-color: var(--accent);
+      background: linear-gradient(140deg, #ffd166, #f7b953);
+      color: #151106;
+    }
+    .main { padding: 14px; min-height: calc(100vh - 28px); }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+    .head h1 {
+      margin: 0;
+      font-size: clamp(24px, 4vw, 42px);
+      letter-spacing: -.03em;
+      text-transform: uppercase;
+      line-height: .95;
+    }
+    .head .meta {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .actions { display: flex; gap: 8px; }
+    button, input, select {
       font-family: "IBM Plex Mono", monospace;
       font-size: 11px;
     }
     button {
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: rgba(255,255,255,.05);
+      border-radius: 9px;
+      background: rgba(255,255,255,.04);
       color: var(--ink);
-      padding: 6px 9px;
-      font-family: "IBM Plex Mono", monospace;
-      font-size: 11px;
+      padding: 7px 9px;
       text-transform: uppercase;
+      letter-spacing: .08em;
       cursor: pointer;
     }
-    button:hover { border-color: var(--accent); color: var(--accent); }
-    .pill { padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); font-size: 10px; font-family: "IBM Plex Mono", monospace; }
-    .ok { color: var(--ok); }
-    .bad { color: var(--bad); }
-    @media (max-width: 1080px) {
-      .grid { grid-template-columns: 1fr; }
-      .controls { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
+    .views .view { display: none; }
+    .views .view.active { display: block; }
+    .status {
+      display: none;
+      margin: 8px 0;
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .status.show { display: block; }
+    .status.error { color: var(--bad); border-color: rgba(255,99,99,.45); }
+    .status.ok { color: var(--ok); border-color: rgba(45,212,191,.45); }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(255,255,255,.04);
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px;
+    }
+    .stat .k {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .stat .v {
+      margin-top: 3px;
+      font-size: 21px;
+      font-weight: 700;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(90px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,.03);
+      color: var(--ink);
+      padding: 7px 8px;
+    }
+    .inline {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .inline > * { flex: 1; }
+    .inline .fit { flex: 0 0 auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      padding: 7px 6px;
+      text-align: left;
+      border-bottom: 1px dashed var(--line);
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      font-family: "IBM Plex Mono", monospace;
+    }
+    .mono { font-family: "IBM Plex Mono", monospace; }
+    @media (max-width: 1160px) {
+      .shell { grid-template-columns: 1fr; }
+      .sidebar { min-height: auto; position: static; }
+      .grid2 { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 760px) {
+      .controls { grid-template-columns: repeat(2, minmax(110px, 1fr)); }
+      .stats { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>OpenClaw Control Deck</h1>
-    <div class="sub">role: <span class="mono">${role}</span> / panel operativo de memorias y automatizaciones</div>
-    <div class="grid">
-      <section class="card">
-        <h2>Metricas Operativas</h2>
-        <div class="stats">
-          <div class="stat"><div class="k">Requests</div><div class="v" id="requestsTotal">-</div></div>
-          <div class="stat"><div class="k">Err</div><div class="v" id="requestsErr">-</div></div>
-          <div class="stat"><div class="k">Memories</div><div class="v" id="memoryTotal">-</div></div>
-          <div class="stat"><div class="k">Retries</div><div class="v" id="automationRetries">-</div></div>
-          <div class="stat"><div class="k">Emb v</div><div class="v" id="embeddingOldPct">-</div></div>
-          <div class="stat"><div class="k">RL Buckets</div><div class="v" id="rateLimitBuckets">-</div></div>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">OpenClaw<br/>Control Deck</div>
+      <div class="sub">panel day 5 operativo</div>
+      <span class="pill">role: ${role}</span>
+      <nav class="nav">
+        <button class="active" data-module="dashboard" type="button">Dashboard</button>
+        <button data-module="projects" type="button">Projects</button>
+        <button data-module="automations" type="button">Automations</button>
+        <button data-module="chat" type="button">Chat Timeline</button>
+      </nav>
+      <div class="sub" style="margin-top:auto; line-height:1.6;">
+        /login (secure entry)<br/>
+        /v1/* versioned API<br/>
+        embedding: google
+      </div>
+    </aside>
+    <main class="main">
+      <header class="head">
+        <div>
+          <h1 id="moduleTitle">Dashboard</h1>
+          <div class="meta" id="moduleSubtitle">salud, memoria y aprobaciones</div>
         </div>
-        <div style="margin-top:8px; font-size:11px; color:var(--muted);" class="mono" id="runtimePin">runtime: -</div>
-      </section>
-      <section class="card">
-        <h2>Rate Limit Health</h2>
-        <div style="display:flex; gap:8px; margin-bottom:8px;">
-          <span class="pill">backend <span id="rlBackend">-</span></span>
-          <span class="pill">avg window <span id="rlWindow">-</span></span>
-          <span class="pill">evictions <span id="rlEvictions">-</span></span>
+        <div class="actions">
+          <button id="refreshModule" type="button">Refresh Module</button>
+          <button id="goLogin" type="button">Re-login</button>
         </div>
-        <table>
-          <thead><tr><th>Key</th><th>Blocked</th></tr></thead>
-          <tbody id="rlTopBody"></tbody>
-        </table>
-      </section>
-      <section class="card">
-        <h2>Aprobaciones + Runs</h2>
-        <table>
-          <thead><tr><th>ID</th><th>Action</th><th>Status</th><th>Ops</th></tr></thead>
-          <tbody id="approvalsBody"></tbody>
-        </table>
-        <div style="height:8px"></div>
-        <table>
-          <thead><tr><th>Rule</th><th>Status</th><th>Attempts</th><th>Event</th></tr></thead>
-          <tbody id="runsBody"></tbody>
-        </table>
-      </section>
-      <section class="card" style="grid-column:1 / -1;">
-        <h2>Memorias Compartidas</h2>
-        <div class="controls">
-          <input id="fProject" placeholder="project_id" />
-          <input id="fAgent" placeholder="agent_id" />
-          <select id="fScope"><option value="">scope</option><option>global</option><option>proyecto</option><option>privado</option></select>
-          <input id="fType" placeholder="tipo" />
-          <input id="fFrom" placeholder="desde ISO" />
-          <input id="fTo" placeholder="hasta ISO" />
-        </div>
-        <div style="display:flex; gap:8px; margin:8px 0;">
-          <input id="fQuery" placeholder="buscar semantica/texto" style="flex:1" />
-          <button onclick="loadMemory()">Filtrar</button>
-        </div>
-        <table>
-          <thead><tr><th>ID</th><th>Proyecto</th><th>Agente</th><th>Scope</th><th>Tipo</th><th>Contenido</th><th>Autor</th><th>Fecha</th><th>Ops</th></tr></thead>
-          <tbody id="memoryBody"></tbody>
-        </table>
-      </section>
-    </div>
+      </header>
+
+      <div class="views">
+        <section class="view active" data-view="dashboard">
+          <div class="status" id="status-dashboard"></div>
+          <section class="card">
+            <h2>Metricas Operativas</h2>
+            <div class="stats">
+              <div class="stat"><div class="k">Requests</div><div class="v" id="requestsTotal">-</div></div>
+              <div class="stat"><div class="k">Errors</div><div class="v" id="requestsErr">-</div></div>
+              <div class="stat"><div class="k">Memories</div><div class="v" id="memoryTotal">-</div></div>
+              <div class="stat"><div class="k">Retries</div><div class="v" id="automationRetries">-</div></div>
+              <div class="stat"><div class="k">Old Emb %</div><div class="v" id="embeddingOldPct">-</div></div>
+              <div class="stat"><div class="k">RL Buckets</div><div class="v" id="rateLimitBuckets">-</div></div>
+            </div>
+            <div class="sub" id="runtimePin" style="margin-top:8px;">runtime: -</div>
+          </section>
+          <div style="height:10px"></div>
+          <div class="grid2">
+            <section class="card">
+              <h2>Rate Limit Health</h2>
+              <div class="inline">
+                <span class="pill">backend <span id="rlBackend">-</span></span>
+                <span class="pill">avg <span id="rlWindow">-</span></span>
+                <span class="pill">evictions <span id="rlEvictions">-</span></span>
+              </div>
+              <table>
+                <thead><tr><th>Key</th><th>Blocked</th></tr></thead>
+                <tbody id="rlTopBody"><tr><td colspan="2">Sin datos</td></tr></tbody>
+              </table>
+            </section>
+            <section class="card">
+              <h2>Aprobaciones + Runs</h2>
+              <table>
+                <thead><tr><th>ID</th><th>Action</th><th>Status</th><th>Ops</th></tr></thead>
+                <tbody id="approvalsBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+              </table>
+              <div style="height:8px"></div>
+              <table>
+                <thead><tr><th>Rule</th><th>Status</th><th>Attempts</th><th>Event</th></tr></thead>
+                <tbody id="runsBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+              </table>
+            </section>
+          </div>
+          <div style="height:10px"></div>
+          <section class="card">
+            <h2>Memorias Compartidas</h2>
+            <div class="controls">
+              <input id="fProject" placeholder="project_id" />
+              <input id="fAgent" placeholder="agent_id" />
+              <select id="fScope"><option value="">scope</option><option value="global">global</option><option value="proyecto">proyecto</option><option value="privado">privado</option></select>
+              <input id="fType" placeholder="tipo" />
+              <input id="fFrom" placeholder="desde ISO" />
+              <input id="fTo" placeholder="hasta ISO" />
+            </div>
+            <div class="inline">
+              <input id="fQuery" placeholder="buscar semantica/texto" />
+              <button class="fit" id="memoryFilterButton" type="button">Filtrar</button>
+            </div>
+            <table>
+              <thead><tr><th>ID</th><th>Proyecto</th><th>Agente</th><th>Scope</th><th>Tipo</th><th>Contenido</th><th>Autor</th><th>Fecha</th><th>Ops</th></tr></thead>
+              <tbody id="memoryBody"><tr><td colspan="9">Sin datos</td></tr></tbody>
+            </table>
+          </section>
+        </section>
+
+        <section class="view" data-view="projects">
+          <div class="status" id="status-projects"></div>
+          <section class="card">
+            <h2>Crear Proyecto</h2>
+            <form id="projectCreateForm" class="inline">
+              <input id="projectName" required minlength="3" placeholder="Nombre del proyecto" />
+              <select id="projectStatus"><option value="active">active</option><option value="paused">paused</option><option value="done">done</option></select>
+              <button class="fit" type="submit">Crear</button>
+            </form>
+          </section>
+          <div style="height:10px"></div>
+          <section class="card">
+            <h2>Lista de Proyectos</h2>
+            <table>
+              <thead><tr><th>ID</th><th>Nombre</th><th>Status</th><th>Creado</th><th>Actualizar</th></tr></thead>
+              <tbody id="projectsBody"><tr><td colspan="5">Sin datos</td></tr></tbody>
+            </table>
+          </section>
+        </section>
+        <section class="view" data-view="automations">
+          <div class="status" id="status-automations"></div>
+          <section class="card">
+            <h2>Crear Regla Basica</h2>
+            <form id="automationCreateForm" class="controls" style="margin-bottom:0;">
+              <input id="ruleName" required minlength="3" placeholder="Nombre regla" />
+              <select id="ruleTriggerType"><option value="task_created">task_created</option><option value="task_status_changed">task_status_changed</option></select>
+              <input id="ruleMessage" placeholder="Mensaje chat (opcional)" />
+              <select id="ruleMemoryScope"><option value="proyecto">memoria proyecto</option><option value="global">memoria global</option><option value="privado">memoria privado</option></select>
+              <button type="submit">Crear regla</button>
+            </form>
+          </section>
+          <div style="height:10px"></div>
+          <div class="grid2">
+            <section class="card">
+              <h2>Reglas</h2>
+              <table>
+                <thead><tr><th>ID</th><th>Nombre</th><th>Trigger</th><th>Enabled</th><th>Ops</th></tr></thead>
+                <tbody id="rulesBody"><tr><td colspan="5">Sin datos</td></tr></tbody>
+              </table>
+            </section>
+            <section class="card">
+              <h2>Ultimos Runs</h2>
+              <table>
+                <thead><tr><th>Rule</th><th>Status</th><th>Attempts</th><th>Start</th></tr></thead>
+                <tbody id="automationRunsBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+              </table>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" data-view="chat">
+          <div class="status" id="status-chat"></div>
+          <section class="card">
+            <h2>Filtros Timeline</h2>
+            <form id="chatFilterForm" class="controls" style="margin-bottom:0;">
+              <input id="chatProjectId" placeholder="project_id" />
+              <input id="chatConversationId" placeholder="conversation_id" />
+              <select id="chatRole"><option value="">role</option><option value="user">user</option><option value="assistant">assistant</option><option value="system">system</option></select>
+              <input id="chatFrom" placeholder="from ISO" />
+              <input id="chatTo" placeholder="to ISO" />
+              <input id="chatLimit" type="number" min="1" max="200" value="50" />
+              <button type="submit">Consultar</button>
+            </form>
+          </section>
+          <div style="height:10px"></div>
+          <section class="card">
+            <h2>Chat Timeline</h2>
+            <table>
+              <thead><tr><th>Timestamp</th><th>Proyecto</th><th>Conversation</th><th>Role</th><th>Event</th><th>Contenido</th></tr></thead>
+              <tbody id="chatTimelineBody"><tr><td colspan="6">Sin datos</td></tr></tbody>
+            </table>
+          </section>
+        </section>
+      </div>
+    </main>
   </div>
+
   <script>
     const token = ${JSON.stringify(token)};
-    const headers = { "authorization": token, "content-type": "application/json" };
+    const modules = {
+      dashboard: ["Dashboard", "salud, memoria y aprobaciones"],
+      projects: ["Projects", "crud ligero de proyectos"],
+      automations: ["Automations", "reglas, estado y runs"],
+      chat: ["Chat Timeline", "mensajes recientes con filtros"]
+    };
+    const state = { current: "dashboard" };
 
     function q(id) { return document.getElementById(id); }
-    async function fetchJson(url, options = {}) {
-      const response = await fetch(url, {
-        ...options,
-        headers: { ...headers, ...(options.headers || {}) }
-      });
-      if (!response.ok) {
-        throw new Error(url + " -> " + response.status);
+
+    function esc(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function setStatus(moduleName, text, kind) {
+      const el = q("status-" + moduleName);
+      if (!el) return;
+      if (!text) {
+        el.className = "status";
+        el.textContent = "";
+        return;
       }
-      return response.json();
+      el.className = "status show " + (kind || "");
+      el.textContent = text;
     }
 
-    async function approve(id, action) {
-      await fetchJson('/v1/policy/approvals/' + id + '/' + action, { method: 'POST' });
-      await load();
+    function setTableMessage(tbodyId, colspan, text) {
+      const tbody = q(tbodyId);
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="' + colspan + '">' + esc(text) + '</td></tr>';
     }
 
-    async function memoryAction(id, action) {
-      await fetchJson('/v1/memory/' + id + '/' + action, { method: 'POST' });
-      await loadMemory();
+    function pill(value) {
+      const low = String(value || "").toLowerCase();
+      let cls = "pill";
+      if (["success", "approved", "active", "done", "enabled"].includes(low)) cls += " ok";
+      if (["failed", "rejected", "blocked", "disabled"].includes(low)) cls += " bad";
+      if (["pending", "paused", "todo"].includes(low)) cls += " warn";
+      return '<span class="' + cls + '">' + esc(value || "-") + '</span>';
     }
 
-    async function loadMemory() {
+    async function fetchJson(url, options) {
+      const opt = options || {};
+      const headers = Object.assign({}, opt.headers || {});
+      if (token && token.trim()) headers.authorization = token;
+      if (opt.body && !headers["content-type"]) headers["content-type"] = "application/json";
+
+      const response = await fetch(url, {
+        method: opt.method || "GET",
+        headers,
+        body: opt.body,
+        credentials: "same-origin"
+      });
+
+      const raw = await response.text();
+      let payload = null;
+      try { payload = raw ? JSON.parse(raw) : null; } catch (_error) { payload = null; }
+
+      if (!response.ok) {
+        const error = new Error((payload && payload.message) || ("Error HTTP " + response.status));
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    }
+
+    function reportError(moduleName, error) {
+      if (error && error.status === 401) {
+        setStatus(moduleName, "Unauthorized: inicia sesion en /login y vuelve a cargar.", "error");
+        return;
+      }
+      setStatus(moduleName, "Error: " + (error.message || "fallo inesperado"), "error");
+    }
+
+    function activate(moduleName) {
+      state.current = moduleName;
+      document.querySelectorAll("[data-module]").forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
+        el.classList.toggle("active", el.getAttribute("data-module") === moduleName);
+      });
+      document.querySelectorAll("[data-view]").forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
+        el.classList.toggle("active", el.getAttribute("data-view") === moduleName);
+      });
+      q("moduleTitle").textContent = modules[moduleName][0];
+      q("moduleSubtitle").textContent = modules[moduleName][1];
+      loadCurrent();
+    }
+
+    async function loadCurrent() {
+      if (state.current === "dashboard") return loadDashboard();
+      if (state.current === "projects") return loadProjects();
+      if (state.current === "automations") return loadAutomations();
+      return loadChatTimeline();
+    }
+    async function loadDashboard() {
+      setStatus("dashboard", "Cargando dashboard...", "");
+      setTableMessage("approvalsBody", 4, "Cargando...");
+      setTableMessage("runsBody", 4, "Cargando...");
+      setTableMessage("rlTopBody", 2, "Cargando...");
+      try {
+        const [metrics, memoryMetrics, approvals, runs, rateLimit] = await Promise.all([
+          fetchJson("/v1/ops/metrics"),
+          fetchJson("/v1/ops/memory/metrics"),
+          fetchJson("/v1/policy/approvals?status=pending"),
+          fetchJson("/v1/automation/runs"),
+          fetchJson("/v1/ops/rate-limit/health?limit=6")
+        ]);
+
+        q("requestsTotal").textContent = String(((metrics || {}).requests || {}).total || 0);
+        q("requestsErr").textContent = String(((metrics || {}).requests || {}).errors || 0);
+        q("memoryTotal").textContent = String((memoryMetrics || {}).total || 0);
+        q("automationRetries").textContent = String(((metrics || {}).automation || {}).retries || 0);
+        q("embeddingOldPct").textContent = String((((memoryMetrics || {}).embeddingDrift || {}).oldVersionPct || 0) + "%");
+        q("rateLimitBuckets").textContent = String((rateLimit || {}).activeBuckets || 0);
+        q("runtimePin").textContent =
+          "runtime: " +
+          ((((memoryMetrics || {}).embeddingRuntime || {}).provider) || "-") + "/" +
+          ((((memoryMetrics || {}).embeddingRuntime || {}).model) || "-") + "/" +
+          ((((memoryMetrics || {}).embeddingRuntime || {}).version) || "-");
+        q("rlBackend").textContent = String((rateLimit || {}).backend || "-");
+        q("rlWindow").textContent = String((rateLimit || {}).averageWindowMs || 0) + "ms";
+        q("rlEvictions").textContent = String((rateLimit || {}).evictions || 0);
+
+        const blocked = (rateLimit || {}).topBlockedKeys || [];
+        q("rlTopBody").innerHTML = blocked.length === 0
+          ? '<tr><td colspan="2">Sin bloqueos</td></tr>'
+          : blocked.map((item) => '<tr><td class="mono">' + esc(item.key) + '</td><td>' + esc(item.blockedCount) + '</td></tr>').join("");
+
+        q("approvalsBody").innerHTML = (approvals || []).length === 0
+          ? '<tr><td colspan="4">Sin pendientes</td></tr>'
+          : approvals.map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.id) + '</td>' +
+                '<td class="mono">' + esc(item.actionType) + '</td>' +
+                '<td>' + pill(item.status) + '</td>' +
+                '<td><button data-action="approval-approve" data-approval-id="' + esc(item.id) + '">approve</button> <button data-action="approval-reject" data-approval-id="' + esc(item.id) + '">reject</button></td>' +
+              '</tr>'
+            )).join("");
+
+        q("runsBody").innerHTML = (runs || []).length === 0
+          ? '<tr><td colspan="4">Sin runs</td></tr>'
+          : runs.slice(0, 10).map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.ruleId) + '</td>' +
+                '<td>' + pill(item.status) + '</td>' +
+                '<td>' + esc(item.attempts || 1) + '</td>' +
+                '<td class="mono">' + esc(item.eventKey || "-") + '</td>' +
+              '</tr>'
+            )).join("");
+
+        await loadMemoryPanel();
+        setStatus("dashboard", "", "");
+      } catch (error) {
+        reportError("dashboard", error);
+      }
+    }
+
+    async function loadMemoryPanel() {
+      setTableMessage("memoryBody", 9, "Cargando memorias...");
       const params = new URLSearchParams();
-      if (q('fProject').value) params.set('projectId', q('fProject').value);
-      if (q('fAgent').value) params.set('agentId', q('fAgent').value);
-      if (q('fScope').value) params.set('scope', q('fScope').value);
-      if (q('fType').value) params.set('memoryType', q('fType').value);
-      if (q('fFrom').value) params.set('from', q('fFrom').value);
-      if (q('fTo').value) params.set('to', q('fTo').value);
-      if (q('fQuery').value) params.set('q', q('fQuery').value);
-      params.set('limit', '80');
-      const memories = await fetchJson('/v1/memory/panel?' + params.toString(), { method: 'GET' });
+      const map = {
+        projectId: q("fProject").value.trim(),
+        agentId: q("fAgent").value.trim(),
+        scope: q("fScope").value,
+        memoryType: q("fType").value.trim(),
+        from: q("fFrom").value.trim(),
+        to: q("fTo").value.trim(),
+        q: q("fQuery").value.trim()
+      };
+      Object.keys(map).forEach((key) => {
+        const value = map[key];
+        if (value) params.set(key, value);
+      });
+      params.set("limit", "80");
 
-      q('memoryBody').innerHTML = memories.map(item => (
-        '<tr>' +
-          '<td class="mono">' + item.id + '</td>' +
-          '<td class="mono">' + (item.projectId || '-') + '</td>' +
-          '<td class="mono">' + (item.agentId || '-') + '</td>' +
-          '<td><span class="pill">' + item.scope + '</span></td>' +
-          '<td class="mono">' + (item.memoryType || '-') + '</td>' +
-          '<td>' + item.content + '</td>' +
-          '<td class="mono">' + (item.createdBy || '-') + '</td>' +
-          '<td class="mono">' + item.timestamp + '</td>' +
-          '<td>' +
-            '<button onclick="memoryAction(\\'' + item.id + '\\', \\'promote-global\\')">promote</button> ' +
-            '<button onclick="memoryAction(\\'' + item.id + '\\', \\'forget\\')">forget</button> ' +
-            '<button onclick="memoryAction(\\'' + item.id + '\\', \\'block\\')">block</button>' +
-          '</td>' +
-        '</tr>'
-      )).join('') || '<tr><td colspan="9">Sin memorias</td></tr>';
+      try {
+        const memories = await fetchJson("/v1/memory/panel?" + params.toString());
+        q("memoryBody").innerHTML = !Array.isArray(memories) || memories.length === 0
+          ? '<tr><td colspan="9">Sin memorias para los filtros actuales</td></tr>'
+          : memories.map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.id) + '</td>' +
+                '<td class="mono">' + esc(item.projectId || "-") + '</td>' +
+                '<td class="mono">' + esc(item.agentId || "-") + '</td>' +
+                '<td>' + pill(item.scope) + '</td>' +
+                '<td class="mono">' + esc(item.memoryType || "-") + '</td>' +
+                '<td>' + esc(item.content) + '</td>' +
+                '<td class="mono">' + esc(item.createdBy || "-") + '</td>' +
+                '<td class="mono">' + esc(item.timestamp) + '</td>' +
+                '<td><button data-action="memory-promote" data-memory-id="' + esc(item.id) + '">promote</button> <button data-action="memory-forget" data-memory-id="' + esc(item.id) + '">forget</button> <button data-action="memory-block" data-memory-id="' + esc(item.id) + '">block</button></td>' +
+              '</tr>'
+            )).join("");
+      } catch (error) {
+        setTableMessage("memoryBody", 9, "Error cargando memorias: " + (error.message || "fallo"));
+      }
     }
 
-    async function load() {
-      const [metrics, memoryMetrics, approvals, runs, rateLimitHealth] = await Promise.all([
-        fetchJson('/v1/ops/metrics'),
-        fetchJson('/v1/ops/memory/metrics'),
-        fetchJson('/v1/policy/approvals?status=pending'),
-        fetchJson('/v1/automation/runs'),
-        fetchJson('/v1/ops/rate-limit/health?limit=6')
-      ]);
-
-      q('requestsTotal').textContent = metrics.requests.total;
-      q('requestsErr').textContent = metrics.requests.errors;
-      q('memoryTotal').textContent = memoryMetrics.total;
-      q('automationRetries').textContent = metrics.automation.retries;
-      q('embeddingOldPct').textContent = (memoryMetrics.embeddingDrift?.oldVersionPct || 0) + '%';
-      q('rateLimitBuckets').textContent = rateLimitHealth.activeBuckets;
-      q('runtimePin').textContent =
-        'runtime: ' +
-        (memoryMetrics.embeddingRuntime?.provider || '-') + '/' +
-        (memoryMetrics.embeddingRuntime?.model || '-') + '/' +
-        (memoryMetrics.embeddingRuntime?.version || '-');
-      q('rlBackend').textContent = rateLimitHealth.backend;
-      q('rlWindow').textContent = String(rateLimitHealth.averageWindowMs || 0) + 'ms';
-      q('rlEvictions').textContent = String(rateLimitHealth.evictions || 0);
-
-      q('rlTopBody').innerHTML = (rateLimitHealth.topBlockedKeys || []).map(item => (
-        '<tr><td class=\"mono\">' + item.key + '</td><td>' + item.blockedCount + '</td></tr>'
-      )).join('') || '<tr><td colspan=\"2\">Sin bloqueos</td></tr>';
-
-      q('approvalsBody').innerHTML = approvals.map(item => (
-        '<tr>' +
-          '<td class="mono">' + item.id + '</td>' +
-          '<td class="mono">' + item.actionType + '</td>' +
-          '<td><span class="pill">' + item.status + '</span></td>' +
-          '<td><button onclick="approve(\\'' + item.id + '\\', \\'approve\\')">approve</button> <button onclick="approve(\\'' + item.id + '\\', \\'reject\\')">reject</button></td>' +
-        '</tr>'
-      )).join('') || '<tr><td colspan="4">Sin pendientes</td></tr>';
-
-      q('runsBody').innerHTML = runs.slice(0, 8).map(item => (
-        '<tr>' +
-          '<td class="mono">' + item.ruleId + '</td>' +
-          '<td><span class="pill ' + (item.status === 'success' ? 'ok' : 'bad') + '">' + item.status + '</span></td>' +
-          '<td>' + (item.attempts || 1) + '</td>' +
-          '<td class="mono">' + (item.eventKey || '-') + '</td>' +
-        '</tr>'
-      )).join('');
-
-      await loadMemory();
+    async function loadProjects() {
+      setStatus("projects", "Cargando proyectos...", "");
+      setTableMessage("projectsBody", 5, "Cargando...");
+      try {
+        const projects = await fetchJson("/v1/projects");
+        q("projectsBody").innerHTML = !Array.isArray(projects) || projects.length === 0
+          ? '<tr><td colspan="5">No hay proyectos creados</td></tr>'
+          : projects.map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.id) + '</td>' +
+                '<td>' + esc(item.name) + '</td>' +
+                '<td>' + pill(item.status) + '</td>' +
+                '<td class="mono">' + esc(item.createdAt) + '</td>' +
+                '<td><div class="inline"><select data-field="project-status"><option value="active"' + (item.status === "active" ? " selected" : "") + '>active</option><option value="paused"' + (item.status === "paused" ? " selected" : "") + '>paused</option><option value="done"' + (item.status === "done" ? " selected" : "") + '>done</option></select><button class="fit" data-action="project-update-status" data-project-id="' + esc(item.id) + '">guardar</button></div></td>' +
+              '</tr>'
+            )).join("");
+        setStatus("projects", (projects || []).length ? "" : "No data: crea tu primer proyecto.", (projects || []).length ? "" : "ok");
+      } catch (error) {
+        reportError("projects", error);
+      }
     }
 
-    load().catch((error) => {
-      console.error(error);
-      alert('No se pudo cargar dashboard: ' + error.message);
-    });
+    async function loadAutomations() {
+      setStatus("automations", "Cargando reglas y runs...", "");
+      setTableMessage("rulesBody", 5, "Cargando...");
+      setTableMessage("automationRunsBody", 4, "Cargando...");
+      try {
+        const [rules, runs] = await Promise.all([
+          fetchJson("/v1/automation/rules"),
+          fetchJson("/v1/automation/runs")
+        ]);
+
+        q("rulesBody").innerHTML = !Array.isArray(rules) || rules.length === 0
+          ? '<tr><td colspan="5">No hay reglas</td></tr>'
+          : rules.map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.id) + '</td>' +
+                '<td>' + esc(item.name) + '</td>' +
+                '<td class="mono">' + esc(((item || {}).trigger || {}).type || "-") + '</td>' +
+                '<td>' + pill(item.enabled ? "enabled" : "disabled") + '</td>' +
+                '<td><button data-action="rule-toggle" data-rule-id="' + esc(item.id) + '" data-enabled="' + esc((!item.enabled).toString()) + '">' + (item.enabled ? "disable" : "enable") + '</button></td>' +
+              '</tr>'
+            )).join("");
+
+        q("automationRunsBody").innerHTML = !Array.isArray(runs) || runs.length === 0
+          ? '<tr><td colspan="4">Sin runs</td></tr>'
+          : runs.slice(0, 12).map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.ruleId) + '</td>' +
+                '<td>' + pill(item.status) + '</td>' +
+                '<td>' + esc(item.attempts || 1) + '</td>' +
+                '<td class="mono">' + esc(item.startedAt) + '</td>' +
+              '</tr>'
+            )).join("");
+
+        setStatus("automations", "", "");
+      } catch (error) {
+        reportError("automations", error);
+      }
+    }
+
+    async function loadChatTimeline() {
+      setStatus("chat", "Cargando timeline...", "");
+      setTableMessage("chatTimelineBody", 6, "Cargando...");
+      const params = new URLSearchParams();
+      const map = {
+        projectId: q("chatProjectId").value.trim(),
+        conversationId: q("chatConversationId").value.trim(),
+        role: q("chatRole").value,
+        from: q("chatFrom").value.trim(),
+        to: q("chatTo").value.trim(),
+        limit: q("chatLimit").value.trim()
+      };
+      Object.keys(map).forEach((key) => {
+        const value = map[key];
+        if (value) params.set(key, value);
+      });
+
+      try {
+        const timeline = await fetchJson("/v1/chat/timeline?" + params.toString());
+        q("chatTimelineBody").innerHTML = !Array.isArray(timeline) || timeline.length === 0
+          ? '<tr><td colspan="6">No hay mensajes para los filtros actuales</td></tr>'
+          : timeline.map((item) => (
+              '<tr>' +
+                '<td class="mono">' + esc(item.timestamp) + '</td>' +
+                '<td class="mono">' + esc(item.projectId || "-") + '</td>' +
+                '<td class="mono">' + esc(item.conversationTitle || item.conversationId) + '</td>' +
+                '<td>' + pill(item.role) + '</td>' +
+                '<td class="mono">' + esc(item.eventType || "chat_message_created") + '</td>' +
+                '<td>' + esc(item.content) + '</td>' +
+              '</tr>'
+            )).join("");
+        setStatus("chat", (timeline || []).length ? "" : "No data: ajusta filtros.", (timeline || []).length ? "" : "ok");
+      } catch (error) {
+        reportError("chat", error);
+      }
+    }
+
+    async function createProject(event) {
+      event.preventDefault();
+      const name = q("projectName").value.trim();
+      const status = q("projectStatus").value;
+      if (!name) return;
+      setStatus("projects", "Creando proyecto...", "");
+      try {
+        await fetchJson("/v1/projects", { method: "POST", body: JSON.stringify({ name, status }) });
+        q("projectName").value = "";
+        setStatus("projects", "Proyecto creado.", "ok");
+        await loadProjects();
+      } catch (error) {
+        reportError("projects", error);
+      }
+    }
+
+    async function createRule(event) {
+      event.preventDefault();
+      const name = q("ruleName").value.trim();
+      const triggerType = q("ruleTriggerType").value;
+      const ruleMessage = q("ruleMessage").value.trim();
+      const memoryScope = q("ruleMemoryScope").value;
+      if (!name) return;
+      setStatus("automations", "Creando regla...", "");
+      try {
+        await fetchJson("/v1/automation/rules", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            trigger: { type: triggerType },
+            actions: [
+              { type: "post_chat_message", payload: ruleMessage ? { content: ruleMessage } : {} },
+              {
+                type: "save_memory",
+                payload: {
+                  scope: memoryScope || "proyecto",
+                  source: "dashboard:automation",
+                  content: "Regla " + name + " ejecutada",
+                  tags: ["dashboard", "automation"]
+                }
+              }
+            ]
+          })
+        });
+        q("ruleName").value = "";
+        q("ruleMessage").value = "";
+        setStatus("automations", "Regla creada.", "ok");
+        await loadAutomations();
+      } catch (error) {
+        reportError("automations", error);
+      }
+    }
+    async function updateProjectStatus(projectId, row) {
+      const select = row ? row.querySelector('select[data-field="project-status"]') : null;
+      const status = select ? select.value : null;
+      if (!status) return;
+      try {
+        await fetchJson("/v1/projects/" + encodeURIComponent(projectId), {
+          method: "PATCH",
+          body: JSON.stringify({ status })
+        });
+        setStatus("projects", "Estado actualizado.", "ok");
+        await loadProjects();
+      } catch (error) {
+        reportError("projects", error);
+      }
+    }
+
+    async function toggleRule(ruleId, enabled) {
+      try {
+        await fetchJson("/v1/automation/rules/" + encodeURIComponent(ruleId) + "/status", {
+          method: "PATCH",
+          body: JSON.stringify({ enabled })
+        });
+        setStatus("automations", "Regla actualizada.", "ok");
+        await loadAutomations();
+      } catch (error) {
+        reportError("automations", error);
+      }
+    }
+
+    async function approveAction(approvalId, action) {
+      try {
+        await fetchJson("/v1/policy/approvals/" + encodeURIComponent(approvalId) + "/" + action, { method: "POST" });
+        await loadDashboard();
+      } catch (error) {
+        reportError("dashboard", error);
+      }
+    }
+
+    async function memoryAction(memoryId, action) {
+      try {
+        await fetchJson("/v1/memory/" + encodeURIComponent(memoryId) + "/" + action, { method: "POST" });
+        await loadMemoryPanel();
+      } catch (error) {
+        reportError("dashboard", error);
+      }
+    }
+
+    function bindEvents() {
+      document.querySelectorAll("[data-module]").forEach((el) => {
+        el.addEventListener("click", () => {
+          const moduleName = el.getAttribute("data-module");
+          if (!moduleName) return;
+          activate(moduleName);
+        });
+      });
+
+      q("refreshModule").addEventListener("click", () => loadCurrent());
+      q("goLogin").addEventListener("click", () => {
+        window.location.href = "/login";
+      });
+
+      q("memoryFilterButton").addEventListener("click", () => loadMemoryPanel());
+      q("projectCreateForm").addEventListener("submit", createProject);
+      q("automationCreateForm").addEventListener("submit", createRule);
+      q("chatFilterForm").addEventListener("submit", (event) => {
+        event.preventDefault();
+        loadChatTimeline();
+      });
+
+      document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const action = target.getAttribute("data-action");
+        if (!action) return;
+
+        if (action === "approval-approve" || action === "approval-reject") {
+          const approvalId = target.getAttribute("data-approval-id");
+          if (!approvalId) return;
+          approveAction(approvalId, action === "approval-approve" ? "approve" : "reject");
+          return;
+        }
+
+        if (action === "memory-promote" || action === "memory-forget" || action === "memory-block") {
+          const memoryId = target.getAttribute("data-memory-id");
+          if (!memoryId) return;
+          const endpointAction = action === "memory-promote"
+            ? "promote-global"
+            : action === "memory-forget"
+              ? "forget"
+              : "block";
+          memoryAction(memoryId, endpointAction);
+          return;
+        }
+
+        if (action === "rule-toggle") {
+          const ruleId = target.getAttribute("data-rule-id");
+          const enabledRaw = target.getAttribute("data-enabled");
+          if (!ruleId || !enabledRaw) return;
+          toggleRule(ruleId, enabledRaw === "true");
+          return;
+        }
+
+        if (action === "project-update-status") {
+          const projectId = target.getAttribute("data-project-id");
+          const row = target.closest("tr");
+          if (!projectId || !row) return;
+          updateProjectStatus(projectId, row);
+        }
+      });
+    }
+
+    bindEvents();
+    activate("dashboard");
   </script>
 </body>
 </html>`;

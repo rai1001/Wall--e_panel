@@ -4,7 +4,7 @@ import { asyncHandler } from "../shared/http/async-handler";
 import { requirePermission } from "../policy/middleware";
 import { ChatService } from "./chat.service";
 import { AppError } from "../shared/http/errors";
-import { validateBody, validateParams } from "../shared/http/validation";
+import { validateBody, validateParams, validateQuery } from "../shared/http/validation";
 
 const conversationBodySchema = z.object({
   title: z.string().min(3).max(120),
@@ -28,6 +28,15 @@ const messageBodySchema = z.object({
   content: z.string().min(1).max(4000),
   actorType: z.string().optional(),
   actorId: z.string().optional()
+});
+
+const timelineQuerySchema = z.object({
+  projectId: z.string().optional(),
+  conversationId: z.string().optional(),
+  role: z.enum(["user", "assistant", "system"]).optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(200).optional()
 });
 
 export function createChatRouter(chatService: ChatService) {
@@ -86,6 +95,25 @@ export function createChatRouter(chatService: ChatService) {
 
       const messages = chatService.listMessages(conversationId);
       res.status(200).json(messages);
+    })
+  );
+
+  router.get(
+    "/timeline",
+    requirePermission("read", "chat"),
+    validateQuery(timelineQuerySchema),
+    asyncHandler(async (req, res) => {
+      const input: Parameters<ChatService["listTimeline"]>[0] = {};
+      if (req.query.projectId) input.projectId = String(req.query.projectId);
+      if (req.query.conversationId) input.conversationId = String(req.query.conversationId);
+      if (req.query.role) input.role = String(req.query.role) as "user" | "assistant" | "system";
+      if (req.query.from) input.from = String(req.query.from);
+      if (req.query.to) input.to = String(req.query.to);
+      if (req.query.limit) input.limit = Number(req.query.limit);
+
+      const timeline = chatService.listTimeline(input);
+
+      res.status(200).json(timeline);
     })
   );
 

@@ -32,11 +32,42 @@ interface MessageRow {
   created_at: string;
 }
 
+interface TimelineRow {
+  message_id: string;
+  conversation_id: string;
+  project_id: string | null;
+  conversation_title: string;
+  role: MessageRole;
+  content: string;
+  created_at: string;
+}
+
 interface ParticipantRow {
   id: string;
   conversation_id: string;
   actor_type: string;
   actor_id: string;
+}
+
+export interface ChatTimelineInput {
+  projectId?: string;
+  conversationId?: string;
+  role?: MessageRole;
+  from?: string;
+  to?: string;
+  limit?: number;
+}
+
+export interface ChatTimelineEntry {
+  id: string;
+  eventType: "chat_message_created";
+  messageId: string;
+  conversationId: string;
+  conversationTitle: string;
+  projectId?: string;
+  role: MessageRole;
+  content: string;
+  timestamp: string;
 }
 
 export class ChatService {
@@ -208,6 +239,57 @@ export class ChatService {
       .all(conversationId) as ParticipantRow[];
 
     return rows.map((row) => this.mapParticipant(row));
+  }
+
+  listTimeline(input: ChatTimelineInput = {}): ChatTimelineEntry[] {
+    const limit = input.limit && input.limit > 0 ? Math.min(input.limit, 200) : 50;
+
+    const rows = this.connection
+      .prepare(
+        `SELECT
+           m.id as message_id,
+           m.conversation_id,
+           c.project_id,
+           c.title as conversation_title,
+           m.role,
+           m.content,
+           m.created_at
+         FROM messages m
+         INNER JOIN conversations c
+           ON c.id = m.conversation_id
+         WHERE (? IS NULL OR c.project_id = ?)
+           AND (? IS NULL OR m.conversation_id = ?)
+           AND (? IS NULL OR m.role = ?)
+           AND (? IS NULL OR m.created_at >= ?)
+           AND (? IS NULL OR m.created_at <= ?)
+         ORDER BY m.created_at DESC
+         LIMIT ?`
+      )
+      .all(
+        input.projectId ?? null,
+        input.projectId ?? null,
+        input.conversationId ?? null,
+        input.conversationId ?? null,
+        input.role ?? null,
+        input.role ?? null,
+        input.from ?? null,
+        input.from ?? null,
+        input.to ?? null,
+        input.to ?? null,
+        limit
+      ) as TimelineRow[];
+
+    return rows.map((row) => ({
+      id: row.message_id,
+      eventType: "chat_message_created",
+      messageId: row.message_id,
+      conversationId: row.conversation_id,
+      conversationTitle: row.conversation_title,
+      ...(row.project_id ? { projectId: row.project_id } : {}),
+      role: row.role,
+      content: row.content,
+      timestamp: row.created_at
+    }));
   }
 
   private mapConversation(row: ConversationRow): Conversation {
