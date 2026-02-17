@@ -19,7 +19,10 @@ export function createApp(context: AppContext = createAppContext()) {
   app.use("/chat", createChatRouter(context.chatService));
   app.use("/projects", createProjectRouter(context.projectService));
   app.use("/memory", createMemoryRouter(context.memoryService));
-  app.use("/automation", createAutomationRouter(context.automationService));
+  app.use(
+    "/automation",
+    createAutomationRouter(context.automationService, context.auditService)
+  );
 
   app.use((error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     if (error instanceof AppError) {

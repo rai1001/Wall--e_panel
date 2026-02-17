@@ -1,16 +1,21 @@
 import { Router } from "express";
 import { assertConfirmed, hasSensitiveActions } from "../policy/approval";
+import { AuditService, auditSensitiveAction } from "../policy/audit.service";
 import { requirePermission } from "../policy/middleware";
 import { asyncHandler } from "../shared/http/async-handler";
 import { AppError } from "../shared/http/errors";
 import { AutomationService } from "./automation.service";
 
-export function createAutomationRouter(automationService: AutomationService) {
+export function createAutomationRouter(
+  automationService: AutomationService,
+  auditService: AuditService
+) {
   const router = Router();
 
   router.post(
     "/rules",
     requirePermission("create", "automatizacion"),
+    auditSensitiveAction(auditService, "create_rule", "automatizacion"),
     asyncHandler(async (req, res) => {
       const actions = req.body.actions;
       if (!Array.isArray(actions) || actions.length === 0) {
@@ -38,6 +43,7 @@ export function createAutomationRouter(automationService: AutomationService) {
   router.post(
     "/rules/:id/test",
     requirePermission("execute", "automatizacion"),
+    auditSensitiveAction(auditService, "test_rule", "automatizacion"),
     asyncHandler(async (req, res) => {
       const ruleId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
       if (!ruleId) {

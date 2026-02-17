@@ -1,6 +1,7 @@
 import { AutomationService } from "./automation/automation.service";
 import { ChatService } from "./chat/chat.service";
 import { MemoryService } from "./memory/memory.service";
+import { AuditService } from "./policy/audit.service";
 import { ProjectService } from "./project/project.service";
 import { EventBus } from "./shared/events/event-bus";
 
@@ -10,6 +11,7 @@ export interface AppContext {
   projectService: ProjectService;
   memoryService: MemoryService;
   automationService: AutomationService;
+  auditService: AuditService;
 }
 
 export function createAppContext(): AppContext {
@@ -18,6 +20,7 @@ export function createAppContext(): AppContext {
   const projectService = new ProjectService(eventBus);
   const memoryService = new MemoryService(eventBus);
   const automationService = new AutomationService(eventBus, chatService, memoryService);
+  const auditService = new AuditService();
   memoryService.enableEventCapture();
   automationService.start();
 
@@ -26,6 +29,7 @@ export function createAppContext(): AppContext {
     chatService,
     projectService,
     memoryService,
-    automationService
+    automationService,
+    auditService
   };
 }
