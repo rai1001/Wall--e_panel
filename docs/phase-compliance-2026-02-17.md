@@ -19,16 +19,18 @@ Base:
 - `Hecho parcial`: rate limit por estrategia actor/ip y trust proxy.
   - Implementado doble limitador en login (IP + email).
   - Configurable por env.
-- `Hecho parcial`: tests de seguridad automatizados.
+- `Hecho`: tests de seguridad automatizados.
   - Nuevos tests de trust proxy y estrategia de rate-limit.
-- `Pendiente`: secret scan en CI y policy formal de retencion/compliance.
-- `Pendiente`: contract tests OpenAPI automatizados.
+- `Hecho`: secret scan en CI (`npm run security:scan` incluido en `npm run ci`).
+- `Hecho`: checks de contrato OpenAPI (`npm run openapi:check`).
+- `Pendiente`: policy formal de retencion/compliance.
 
 ### UX operativa (brecha principal reportada)
 - `Hecho`: flujo guiado de tareas en modulo Projects.
   - Crear proyecto -> crear tarea -> actualizar estado de tarea.
 - `Hecho`: CTA de flujo rapido en dashboard (3 pasos).
 - `Hecho`: modulos visibles separados para Memory y Permissions.
+- `Hecho`: accion de bootstrap rapido para admin (`/v1/onboarding/bootstrap-flow`).
 - `Pendiente`: simplificar aun mas microcopy/terminologia para usuario no tecnico.
 
 ## Evidencia de codigo
@@ -37,6 +39,8 @@ Base:
 - `src/policy/auth.router.ts`
 - `src/app.ts`
 - `src/config/network.ts`
+- `scripts/secret-scan.ts`
+- `scripts/check-openapi-contract.ts`
 - `tests/integration/day6-rate-limit-strategy.test.ts`
 - `tests/unit/network.config.test.ts`
 
