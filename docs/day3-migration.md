@@ -1,103 +1,67 @@
-﻿# Day 3 Migration Notes
+# Day 3 Migration Notes (updated through Day 5)
 
 ## API compatibility
 
-Backward compatibility is kept:
-- Legacy routes (`/auth`, `/projects`, etc.) are still mounted with:
-  - `Deprecation: true`
-  - `Sunset: Wed, 30 Sep 2026 00:00:00 GMT`
-- Recommended routes are under `/v1/*`.
+Backward compatibility is preserved:
+- Legacy routes (`/auth`, `/projects`, etc.) are still mounted with deprecation headers.
+- Preferred routes remain under `/v1/*`.
 
-## Main changes
+## Database migration behavior
 
-1. Versioning
-- New operational prefix: `/v1`.
+Migrations are idempotent and run on startup.
+Current hardening includes:
+- Column backfill for legacy schemas (including `project_id` paths).
+- Safe index creation after column checks.
+- Defensive table existence checks before ALTER/INDEX operations.
 
-2. Memory
-- `POST /v1/memory/save` supports:
-  - `projectId`, `agentId`, `scope`, `memoryType`, `createdBy`, `ttlSeconds`, `temporary`.
-- New endpoints:
-  - `GET /v1/memory/panel`
-  - `POST /v1/memory/reindex`
-  - `POST /v1/memory/deduplicate`
-  - `POST /v1/memory/hygiene/run`
-  - `POST /v1/memory/:id/promote-global`
-  - `POST /v1/memory/:id/forget`
-  - `POST /v1/memory/:id/block`
+## Legacy `project_id` blocking issue
 
-3. Ops
-- New endpoints:
-  - `GET /v1/ops/memory/metrics`
-  - `GET /v1/ops/automation/health`
-  - `GET /v1/ops/audit/aggregated`
+Previous failure:
+- `SqliteError: no such column: project_id`
 
-4. Auth/JWT
-- JWT rotation via `JWT_SECRETS=secret_new,secret_old`.
-- Fallback to `JWT_SECRET` when `JWT_SECRETS` is not defined.
+Current fix:
+- Startup migration now ensures `project_id` in both legacy `memory_items` and legacy `conversations` schemas.
+- Additional guard checks reduce startup failures on partially upgraded DBs.
 
-5. Day 4 hardening updates
-- `memory_embeddings` now stores `embedding_provider`, `embedding_model`, `embedding_version`.
-- New shared limiter table: `rate_limit_buckets` for distributed rate-limit mode.
+## Real DB upgrade procedure
 
-## Real database migration (blocking path)
-
-Use this flow when upgrading an existing SQLite database.
-
-1. Stop the app.
-2. Backup before booting new code:
+1. Stop app.
+2. Backup DB:
 ```bash
 npm run backup
 ```
-3. Start the app once so schema migration runs:
+3. Pull latest code.
+4. Start app once to run migration:
 ```bash
 npm run dev
 ```
-4. Validate startup and health:
+5. Validate health:
 ```bash
 curl http://localhost:3000/health
 ```
-5. Validate critical endpoint:
+6. Validate protected endpoint:
 ```bash
 curl -H "Authorization: Bearer <TOKEN>" "http://localhost:3000/v1/memory/search?limit=1"
 ```
 
-### If startup fails with `SqliteError: no such column: project_id`
+## Rollback procedure
 
-- Root cause in old builds: indexes were created before column backfill.
-- Fix in current code: migration now ensures columns first and creates indexes after.
-- Recovery steps:
-1. Stop app.
-2. Restore last backup:
-```bash
-npm run restore -- --file=backups/<your-backup-file>.db
-```
-3. Pull latest code with migration fix.
-4. Retry startup.
-
-## Rollback plan
-
-If any migration or boot validation fails:
+If boot or validation fails:
 1. Stop app.
 2. Restore backup:
 ```bash
-npm run restore -- --file=backups/<your-backup-file>.db
+npm run restore -- --file=backups/<backup-file>.db
 ```
-3. Revert app version to the previous stable commit.
-4. Start old version and verify `/health`.
+3. Return to previous stable commit and re-run.
 
-## Relevant environment variables
-- `PORT` (optional, default `3000`)
-- `DB_PATH` (optional, default `data/assistant.db`)
-- `JWT_SECRETS` (optional, comma-separated)
-- `JWT_SECRET` (fallback)
-- `EMBEDDING_PROVIDER` (`local` or `google`)
-- `GOOGLE_API_KEY` (required for `EMBEDDING_PROVIDER=google`)
-- `GOOGLE_EMBEDDING_MODEL` (optional, default `text-embedding-004`)
-- `RATE_LIMIT_STORE` (`db` recommended, `memory` fallback)
-- `ALLOW_LEGACY_HEADERS` (optional, default `false`)
-- `FORCE_RESET=true` only for local reset script
+## Environment variables
 
-## Recommended adoption order
-1. Migrate internal clients to `/v1/*`.
-2. Run backup policy and periodic reindex.
-3. Enable ops monitoring endpoints in daily operation.
+- `PORT` (default `3000`)
+- `DB_PATH` (default `data/assistant.db`)
+- `JWT_SECRET` or `JWT_SECRETS`
+- `EMBEDDING_PROVIDER` (`google` recommended in production)
+- `GOOGLE_API_KEY` (required when provider = `google`)
+- `GOOGLE_EMBEDDING_MODEL` (optional)
+- `RATE_LIMIT_STORE` (`db` recommended)
+- `ALLOW_LEGACY_HEADERS` (optional)
+- `FORCE_RESET` for local reset only

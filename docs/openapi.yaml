@@ -55,6 +55,17 @@ paths:
       responses:
         "200": { description: OK }
 
+  /v1/projects/{id}:
+    patch:
+      summary: Update project name/status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated }
+
   /v1/projects/{id}/tasks:
     post:
       summary: Create task (emits task_created)
@@ -100,6 +111,31 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+
+  /v1/chat/timeline:
+    get:
+      summary: List recent chat timeline events
+      parameters:
+        - in: query
+          name: projectId
+          schema: { type: string }
+        - in: query
+          name: conversationId
+          schema: { type: string }
+        - in: query
+          name: role
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string }
+        - in: query
+          name: to
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200 }
+      responses:
+        "200": { description: Timeline list }
 
   /v1/memory/save:
     post:
@@ -202,6 +238,17 @@ paths:
       summary: List rules
       responses:
         "200": { description: OK }
+
+  /v1/automation/rules/{id}/status:
+    patch:
+      summary: Enable or disable automation rule
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated }
 
   /v1/automation/runs:
     get:

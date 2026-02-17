@@ -1,58 +1,79 @@
-﻿# Runbook Operativo (v1)
+# Runbook Operativo (v1 - Day 5)
 
-## 0) Script parity (docs <-> package.json)
+## 0) Scripts oficiales (docs <-> package.json)
 
-Los siguientes scripts estan declarados en `package.json` y son los oficiales:
+Scripts disponibles y validados:
 - `npm run backup`
 - `npm run restore -- --file=<backup.db>`
 - `npm run reindex`
 - `npm run reset:local`
 
-Config flags relevant for operations:
-- `EMBEDDING_PROVIDER=local|google`
-- `RATE_LIMIT_STORE=db|memory` (`db` recommended for shared limits)
-
-## 1) Arranque y checks
+## 1) Arranque y validacion base
 
 ```bash
 npm install
 npm run typecheck
 npm test
 npm run smoke
+npm run dev
 ```
 
-## 2) Backup / restore
+## 2) Configuracion recomendada de embeddings
+
+Produccion:
+- `EMBEDDING_PROVIDER=google`
+- `GOOGLE_API_KEY=<secret>`
+- opcional `GOOGLE_EMBEDDING_MODEL=text-embedding-004`
+
+Fallback local (incidencia/quota):
+- `EMBEDDING_PROVIDER=local`
+
+Si cambias provider o model, ejecutar:
+```bash
+npm run reindex
+```
+
+## 3) Operacion del panel web
+
+Entrada:
+- `GET /login`
+
+Flujo:
+1. Login en `/login`
+2. Se crea cookie `oc_token`
+3. Redirect a `/v1/dashboard`
+
+Modulos operativos en panel:
+- Dashboard
+- Projects
+- Automations
+- Chat Timeline
+
+## 4) Backups y recovery
 
 Backup:
-
 ```bash
 npm run backup
 ```
 
 Restore:
-
 ```bash
 npm run restore -- --file=backups/assistant-YYYY-MM-DDTHH-MM-SS.db
 ```
 
-## 3) Reindex de memoria vectorial
+## 5) Reindex y data hygiene
 
-Completo (limite default):
-
+Reindex completo:
 ```bash
 npm run reindex
 ```
 
-Incremental:
-
+Reindex incremental:
 ```bash
 npm run reindex -- --since=2026-02-17T00:00:00.000Z --limit=2000
 ```
 
-## 4) Higiene de datos
-
-Ejecutar TTL + dedup + cleanup:
-
+Higiene (TTL + dedup + cleanup):
 ```bash
 curl -X POST http://localhost:3000/v1/memory/hygiene/run \
   -H "Authorization: Bearer <TOKEN>" \
@@ -60,52 +81,35 @@ curl -X POST http://localhost:3000/v1/memory/hygiene/run \
   -d '{"processedEventsMaxAgeDays":30}'
 ```
 
-## 5) Operacion panel
+## 6) Indicadores a vigilar
 
-Entrada recomendada:
+- `GET /v1/ops/memory/metrics`
+- `GET /v1/ops/embedding/runtime`
+- `GET /v1/ops/automation/health`
+- `GET /v1/ops/audit/aggregated`
+- `GET /v1/ops/rate-limit/health`
 
-```text
-GET /login
-```
+## 7) Diagnostico rapido del dashboard
 
-Flujo:
-- `/login` -> `POST /v1/auth/login` -> set cookie `oc_token` -> redirect a `/v1/dashboard`
+- `Unauthorized`: token/cookie invalido o expirado. Re-login en `/login`.
+- `Empty`: la vista carga pero los filtros actuales no tienen resultados.
+- `No data`: no existe informacion aun (DB limpia o modulo sin uso).
 
-Funciones:
-- filtros por proyecto/agente/fecha/scope/tipo
-- promover a global
-- olvidar
-- bloquear
-- revision de aprobaciones y runs
-
-## 6) Reset local seguro
+## 8) Reset local seguro
 
 Bash:
-
 ```bash
 FORCE_RESET=true npm run reset:local
 ```
 
 PowerShell:
-
 ```powershell
 $env:FORCE_RESET='true'; npm run reset:local
 ```
 
-## 7) Indicadores clave a vigilar
-- `GET /v1/ops/memory/metrics`
-- `GET /v1/ops/automation/health`
-- `GET /v1/ops/audit/aggregated`
+## 9) Rollback por fallo de Google embedding
 
-## 8) Troubleshooting
-
-Ver `docs/troubleshooting.md` para errores comunes de DB, puerto, JWT y filesystem.
-
-## 9) Rollback embedding provider (Google quota/failure)
-
-If Google embedding provider degrades (errors, quota, high latency):
-
-1. Switch to local fallback:
+1. Cambiar a local:
 ```bash
 EMBEDDING_PROVIDER=local npm run dev
 ```
@@ -114,16 +118,16 @@ PowerShell:
 $env:EMBEDDING_PROVIDER='local'; npm run dev
 ```
 
-2. Reindex only recent data first (partial recovery):
+2. Reindex parcial para recuperacion rapida:
 ```bash
 npm run reindex -- --since=2026-02-17T00:00:00.000Z --limit=2000
 ```
 
-3. Validate drift in runtime metrics:
+3. Validar drift/runtime:
 - `GET /v1/ops/embedding/runtime`
-- `GET /v1/ops/memory/metrics` (`embeddingDrift`)
+- `GET /v1/ops/memory/metrics`
 
-4. When Google service stabilizes, restore provider and run full reindex:
+4. Cuando Google se estabilice, volver a Google y reindex completo:
 ```bash
 EMBEDDING_PROVIDER=google npm run reindex
 ```
