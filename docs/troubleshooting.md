@@ -122,3 +122,25 @@ PowerShell:
 ```powershell
 $env:FORCE_RESET='true'; npm run reset:local
 ```
+
+## 9) Rate limit excesivo en login detras de proxy
+
+Sintomas:
+- usuarios distintos bloqueados como si fueran la misma IP.
+
+Causa frecuente:
+- `TRUST_PROXY` desconfigurado.
+
+Fix:
+1. Si hay reverse proxy, activar:
+```bash
+TRUST_PROXY=true npm run dev
+```
+PowerShell:
+```powershell
+$env:TRUST_PROXY='true'; npm run dev
+```
+2. Ajustar umbrales si hace falta:
+- `RATE_LIMIT_AUTH_LOGIN_IP_MAX`
+- `RATE_LIMIT_AUTH_LOGIN_EMAIL_MAX`
+- `RATE_LIMIT_AUTH_LOGIN_WINDOW_MS`

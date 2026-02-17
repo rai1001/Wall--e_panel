@@ -89,6 +89,15 @@ curl -X POST http://localhost:3000/v1/memory/hygiene/run \
 - `GET /v1/ops/audit/aggregated`
 - `GET /v1/ops/rate-limit/health`
 
+## 6.1) Proxy real + rate limit por actor/ip
+
+Si despliegas detras de Nginx/Cloudflare/ingress:
+- `TRUST_PROXY=true` (o hops exactos, por ejemplo `TRUST_PROXY=1`)
+
+Login aplica doble limite:
+- por IP: `RATE_LIMIT_AUTH_LOGIN_IP_MAX` en ventana `RATE_LIMIT_AUTH_LOGIN_WINDOW_MS`
+- por email: `RATE_LIMIT_AUTH_LOGIN_EMAIL_MAX` en la misma ventana
+
 ## 7) Diagnostico rapido del dashboard
 
 - `Unauthorized`: token/cookie invalido o expirado. Re-login en `/login`.

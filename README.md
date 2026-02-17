@@ -21,10 +21,12 @@ Core E2E flow:
 
 ## Day 5 result
 `/v1/dashboard` now provides a usable panel with module navigation:
-- `Dashboard`: metrics, approvals/runs, memory panel and actions
-- `Projects`: list/create projects and update status
+- `Dashboard`: resumen operativo + flujo rapido
+- `Projects`: crear proyecto, crear tarea y actualizar estado
 - `Automations`: list/create rules and enable/disable
 - `Chat Timeline`: recent chat events with filters
+- `Memory`: busqueda y acciones de memoria compartida
+- `Permissions`: aprobaciones pendientes + auditoria agregada
 
 Auth behavior remains compatible:
 - `Authorization: Bearer ...`
@@ -55,6 +57,7 @@ Minimum env:
 - `JWT_SECRET` or `JWT_SECRETS`
 - `EMBEDDING_PROVIDER`
 - `RATE_LIMIT_STORE`
+- `TRUST_PROXY` (importante detras de reverse proxy)
 
 Embedding provider in real usage:
 - `EMBEDDING_PROVIDER=google`
@@ -154,7 +157,7 @@ Detailed troubleshooting:
 ## Security
 - JWT rotation via `JWT_SECRETS`
 - Distributed rate limit (DB-backed)
-- Login throttling + temporary lockout
+- Login throttling por IP y por email + temporary lockout
 - Zod validation on critical payloads
 - Audit records for sensitive actions
 
