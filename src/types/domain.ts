@@ -59,11 +59,22 @@ export interface Milestone {
 
 export interface MemoryItem {
   id: string;
+  projectId?: string;
+  agentId?: string;
   scope: string;
+  memoryType?: string;
   content: string;
   source: string;
+  createdBy?: string;
   timestamp: string;
   tags: string[];
+  updatedAt?: string;
+  contentHash?: string;
+  duplicateOf?: string;
+  blocked?: boolean;
+  archived?: boolean;
+  archivedReason?: string;
+  expiresAt?: string;
 }
 
 export interface User {
@@ -80,11 +91,32 @@ export type DomainEventType =
   | "task_status_changed"
   | "chat_message_created"
   | "memory_saved"
-  | "automation_rule_executed";
+  | "automation_rule_executed"
+  | "scheduled_tick";
+
+export type TriggerConditionOperator =
+  | "eq"
+  | "neq"
+  | "contains"
+  | "starts_with"
+  | "ends_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte";
+
+export interface TriggerCondition {
+  field: string;
+  operator: TriggerConditionOperator;
+  value: string | number | boolean;
+}
 
 export interface Trigger {
   type: DomainEventType;
   filter?: Record<string, string>;
+  mode?: "AND" | "OR";
+  conditions?: TriggerCondition[];
+  cron?: string;
 }
 
 export type AutomationActionType =
@@ -112,11 +144,22 @@ export interface RunLog {
   id: string;
   ruleId: string;
   eventKey?: string;
+  correlationId?: string;
   status: "success" | "failed";
   output: string;
   attempts?: number;
   startedAt: string;
   finishedAt: string;
+}
+
+export interface DeadLetter {
+  id: string;
+  ruleId: string;
+  eventKey: string;
+  reason: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  correlationId?: string;
 }
 
 export type ApprovalStatus = "pending" | "approved" | "rejected";

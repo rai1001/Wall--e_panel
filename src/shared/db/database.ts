@@ -97,11 +97,31 @@ function migrate(connection: Database.Database) {
 
     CREATE TABLE IF NOT EXISTS memory_items (
       id TEXT PRIMARY KEY,
+      project_id TEXT,
+      agent_id TEXT,
       scope TEXT NOT NULL,
+      memory_type TEXT,
       content TEXT NOT NULL,
       source TEXT NOT NULL,
+      created_by TEXT,
       timestamp TEXT NOT NULL,
-      tags_json TEXT NOT NULL
+      tags_json TEXT NOT NULL,
+      updated_at TEXT,
+      content_hash TEXT,
+      duplicate_of TEXT,
+      blocked INTEGER DEFAULT 0,
+      archived INTEGER DEFAULT 0,
+      archived_reason TEXT,
+      expires_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS memory_embeddings (
+      memory_id TEXT PRIMARY KEY,
+      embedding_dim INTEGER NOT NULL,
+      embedding_json TEXT NOT NULL,
+      content_hash TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(memory_id) REFERENCES memory_items(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS automation_rules (
@@ -109,6 +129,9 @@ function migrate(connection: Database.Database) {
       name TEXT NOT NULL,
       trigger_type TEXT NOT NULL,
       trigger_filter_json TEXT,
+      trigger_mode TEXT,
+      trigger_conditions_json TEXT,
+      trigger_cron TEXT,
       actions_json TEXT NOT NULL,
       enabled INTEGER NOT NULL
     );
@@ -117,6 +140,7 @@ function migrate(connection: Database.Database) {
       id TEXT PRIMARY KEY,
       rule_id TEXT NOT NULL,
       event_key TEXT NOT NULL,
+      correlation_id TEXT,
       status TEXT NOT NULL,
       output TEXT NOT NULL,
       attempts INTEGER NOT NULL,
@@ -150,12 +174,52 @@ function migrate(connection: Database.Database) {
       details_json TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS dead_letters (
+      id TEXT PRIMARY KEY,
+      rule_id TEXT NOT NULL,
+      event_key TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      correlation_id TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_login_state (
+      email TEXT PRIMARY KEY,
+      failed_count INTEGER NOT NULL,
+      locked_until TEXT,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory_items(scope);
     CREATE INDEX IF NOT EXISTS idx_runs_rule ON run_logs(rule_id);
     CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
+    CREATE INDEX IF NOT EXISTS idx_dead_letters_rule ON dead_letters(rule_id);
   `);
+
+  ensureColumn(connection, "automation_rules", "trigger_mode", "TEXT");
+  ensureColumn(connection, "automation_rules", "trigger_conditions_json", "TEXT");
+  ensureColumn(connection, "automation_rules", "trigger_cron", "TEXT");
+  ensureColumn(connection, "run_logs", "correlation_id", "TEXT");
+  ensureColumn(connection, "memory_items", "project_id", "TEXT");
+  ensureColumn(connection, "memory_items", "agent_id", "TEXT");
+  ensureColumn(connection, "memory_items", "memory_type", "TEXT");
+  ensureColumn(connection, "memory_items", "created_by", "TEXT");
+  ensureColumn(connection, "memory_items", "updated_at", "TEXT");
+  ensureColumn(connection, "memory_items", "content_hash", "TEXT");
+  ensureColumn(connection, "memory_items", "duplicate_of", "TEXT");
+  ensureColumn(connection, "memory_items", "blocked", "INTEGER DEFAULT 0");
+  ensureColumn(connection, "memory_items", "archived", "INTEGER DEFAULT 0");
+  ensureColumn(connection, "memory_items", "archived_reason", "TEXT");
+  ensureColumn(connection, "memory_items", "expires_at", "TEXT");
+
+  ensureIndex(connection, "idx_memory_project", "memory_items", "project_id");
+  ensureIndex(connection, "idx_memory_agent", "memory_items", "agent_id");
+  ensureIndex(connection, "idx_memory_type", "memory_items", "memory_type");
+  ensureIndex(connection, "idx_memory_archived", "memory_items", "archived");
+  ensureIndex(connection, "idx_memory_expires", "memory_items", "expires_at");
 }
 
 function seed(connection: Database.Database) {
@@ -194,4 +258,30 @@ export function parseJson<T>(raw: string | null): T | undefined {
     return undefined;
   }
   return JSON.parse(raw) as T;
+}
+
+function ensureColumn(
+  connection: Database.Database,
+  tableName: string,
+  columnName: string,
+  sqlType: string
+) {
+  const rows = connection
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all() as Array<{ name: string }>;
+
+  if (rows.some((row) => row.name === columnName)) {
+    return;
+  }
+
+  connection.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${sqlType}`);
+}
+
+function ensureIndex(
+  connection: Database.Database,
+  indexName: string,
+  tableName: string,
+  columnName: string
+) {
+  connection.exec(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName}(${columnName})`);
 }
