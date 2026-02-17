@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
+import { Database } from "better-sqlite3";
 import { ChatService } from "../chat/chat.service";
 import { MemoryService } from "../memory/memory.service";
-import { hasSensitiveActions } from "../policy/approval";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
-import { ApprovalRequiredError, NotFoundError } from "../shared/http/errors";
+import { AppError, NotFoundError } from "../shared/http/errors";
 import { createId } from "../shared/id";
 import {
   Action,
@@ -22,18 +23,36 @@ export interface CreateRuleInput {
 export interface TestRuleInput {
   eventType?: DomainEventType;
   eventPayload?: Record<string, unknown>;
-  confirmed?: boolean;
+}
+
+interface RuleRow {
+  id: string;
+  name: string;
+  trigger_type: DomainEventType;
+  trigger_filter_json: string | null;
+  actions_json: string;
+  enabled: number;
+}
+
+interface RunLogRow {
+  id: string;
+  rule_id: string;
+  event_key: string;
+  status: "success" | "failed";
+  output: string;
+  attempts: number;
+  started_at: string;
+  finished_at: string;
 }
 
 export class AutomationService {
-  private readonly rules: AutomationRule[] = [];
-  private readonly runLogs: RunLog[] = [];
   private started = false;
 
   constructor(
     private readonly eventBus: EventBus,
     private readonly chatService: ChatService,
-    private readonly memoryService: MemoryService
+    private readonly memoryService: MemoryService,
+    private readonly connection: Database
   ) {}
 
   start() {
@@ -50,67 +69,103 @@ export class AutomationService {
     });
   }
 
-  createRule(input: CreateRuleInput, confirmed = false) {
-    if (hasSensitiveActions(input.actions) && !confirmed) {
-      throw new ApprovalRequiredError(
-        "La regla contiene acciones sensibles y requiere confirmacion explicita."
-      );
+  createRule(input: CreateRuleInput) {
+    const name = input.name?.trim();
+    if (!name) {
+      throw new AppError("name es requerido para crear regla", 400);
+    }
+    if (!Array.isArray(input.actions) || input.actions.length === 0) {
+      throw new AppError("actions debe contener al menos una accion", 400);
     }
 
     const rule: AutomationRule = {
       id: createId("rule"),
-      name: input.name,
+      name,
       trigger: input.trigger,
       actions: input.actions,
       enabled: input.enabled ?? true
     };
 
-    this.rules.push(rule);
+    this.connection
+      .prepare(
+        `INSERT INTO automation_rules (id, name, trigger_type, trigger_filter_json, actions_json, enabled)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        rule.id,
+        rule.name,
+        rule.trigger.type,
+        rule.trigger.filter ? JSON.stringify(rule.trigger.filter) : null,
+        JSON.stringify(rule.actions),
+        rule.enabled ? 1 : 0
+      );
+
     return rule;
   }
 
   listRules() {
-    return [...this.rules];
+    const rows = this.connection
+      .prepare(
+        `SELECT id, name, trigger_type, trigger_filter_json, actions_json, enabled
+         FROM automation_rules
+         ORDER BY id DESC`
+      )
+      .all() as RuleRow[];
+    return rows.map((row) => this.mapRule(row));
   }
 
   listRunLogs() {
-    return [...this.runLogs];
+    const rows = this.connection
+      .prepare(
+        `SELECT id, rule_id, event_key, status, output, attempts, started_at, finished_at
+         FROM run_logs
+         ORDER BY started_at DESC`
+      )
+      .all() as RunLogRow[];
+    return rows.map((row) => this.mapRunLog(row));
   }
 
   getRuleById(ruleId: string) {
-    const rule = this.rules.find((candidate) => candidate.id === ruleId);
-    if (!rule) {
+    const row = this.connection
+      .prepare(
+        `SELECT id, name, trigger_type, trigger_filter_json, actions_json, enabled
+         FROM automation_rules
+         WHERE id = ?`
+      )
+      .get(ruleId) as RuleRow | undefined;
+
+    if (!row) {
       throw new NotFoundError(`Automation rule ${ruleId} no encontrada`);
     }
-    return rule;
+    return this.mapRule(row);
   }
 
   async testRule(ruleId: string, input: TestRuleInput = {}) {
     const rule = this.getRuleById(ruleId);
-    if (hasSensitiveActions(rule.actions) && !input.confirmed) {
-      throw new ApprovalRequiredError(
-        "Test de regla sensible requiere confirmacion explicita."
-      );
-    }
-
     const event: DomainEvent = {
       type: input.eventType ?? rule.trigger.type,
       payload: input.eventPayload ?? {},
       occurredAt: new Date().toISOString()
     };
 
-    await this.executeRule(rule, event);
-    return this.runLogs[this.runLogs.length - 1];
+    await this.executeRule(rule, event, `${this.buildEventKey(rule, event)}:manual_test`);
+    return this.listRunLogs()[0];
   }
 
   private async handleEvent(event: DomainEvent) {
-    const activeRules = this.rules.filter((rule) => rule.enabled);
+    const activeRules = this.listRules().filter((rule) => rule.enabled);
     for (const rule of activeRules) {
       if (!this.matches(rule, event)) {
         continue;
       }
 
-      await this.executeRule(rule, event);
+      const eventKey = this.buildEventKey(rule, event);
+      if (this.isAlreadyProcessed(eventKey)) {
+        continue;
+      }
+
+      await this.executeRule(rule, event, eventKey);
+      this.markAsProcessed(eventKey);
     }
   }
 
@@ -132,44 +187,89 @@ export class AutomationService {
     return true;
   }
 
-  private async executeRule(rule: AutomationRule, event: DomainEvent) {
+  private async executeRule(rule: AutomationRule, event: DomainEvent, eventKey: string) {
     const startedAt = new Date().toISOString();
-    const runLog: RunLog = {
-      id: createId("run"),
-      ruleId: rule.id,
-      status: "success",
-      output: "ok",
-      startedAt,
-      finishedAt: startedAt
-    };
+    let attempts = 0;
+    let status: "success" | "failed" = "success";
+    let output = `Regla ${rule.name} ejecutada`;
 
     try {
       for (const action of rule.actions) {
-        await this.executeAction(rule, action, event);
-      }
+        let actionAttempt = 0;
+        const maxAttempts = this.resolveMaxAttempts(action);
+        let done = false;
 
-      runLog.status = "success";
-      runLog.output = `Regla ${rule.name} ejecutada`;
+        while (!done) {
+          actionAttempt += 1;
+          attempts += 1;
+          try {
+            await this.executeAction(rule, action, event, actionAttempt);
+            done = true;
+          } catch (error) {
+            if (actionAttempt >= maxAttempts) {
+              throw error;
+            }
+          }
+        }
+      }
     } catch (error) {
-      runLog.status = "failed";
-      runLog.output = error instanceof Error ? error.message : "Unknown automation error";
+      status = "failed";
+      output = error instanceof Error ? error.message : "Unknown automation error";
     }
 
-    runLog.finishedAt = new Date().toISOString();
-    this.runLogs.push(runLog);
+    const runLog: RunLog = {
+      id: createId("run"),
+      ruleId: rule.id,
+      eventKey,
+      status,
+      output,
+      attempts,
+      startedAt,
+      finishedAt: new Date().toISOString()
+    };
+
+    this.connection
+      .prepare(
+        `INSERT INTO run_logs (id, rule_id, event_key, status, output, attempts, started_at, finished_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        runLog.id,
+        runLog.ruleId,
+        runLog.eventKey ?? "",
+        runLog.status,
+        runLog.output,
+        runLog.attempts ?? 0,
+        runLog.startedAt,
+        runLog.finishedAt
+      );
 
     await this.eventBus.publish({
       type: "automation_rule_executed",
       payload: {
         runLogId: runLog.id,
         ruleId: runLog.ruleId,
-        status: runLog.status
+        status: runLog.status,
+        eventKey
       },
       occurredAt: new Date().toISOString()
     });
   }
 
-  private async executeAction(rule: AutomationRule, action: Action, event: DomainEvent) {
+  private resolveMaxAttempts(action: Action) {
+    const payloadAttempts = action.payload?.maxAttempts;
+    if (typeof payloadAttempts === "number" && payloadAttempts > 0 && payloadAttempts <= 5) {
+      return Math.floor(payloadAttempts);
+    }
+    return 3;
+  }
+
+  private async executeAction(
+    rule: AutomationRule,
+    action: Action,
+    event: DomainEvent,
+    actionAttempt: number
+  ) {
     switch (action.type) {
       case "post_chat_message": {
         const payload = action.payload ?? {};
@@ -179,11 +279,9 @@ export class AutomationService {
         let conversationId = conversationFromPayload;
         if (!conversationId && projectId) {
           const conversation = this.chatService.findConversationByProjectId(projectId);
-          if (conversation) {
-            conversationId = conversation.id;
-          } else {
-            conversationId = this.chatService.createSystemConversationForProject(projectId).id;
-          }
+          conversationId = conversation
+            ? conversation.id
+            : this.chatService.createSystemConversationForProject(projectId).id;
         }
 
         if (!conversationId) {
@@ -194,6 +292,10 @@ export class AutomationService {
 
         const defaultContent = `Task creada: ${this.readString(event.payload.taskTitle) ?? this.readString(event.payload.taskId) ?? "sin titulo"} (${rule.name})`;
         const content = this.readString(payload.content) ?? defaultContent;
+
+        if (payload.failOnce === true && actionAttempt === 1) {
+          throw new Error("Simulated transient error in post_chat_message");
+        }
 
         await this.chatService.sendMessage(conversationId, {
           role: "system",
@@ -210,6 +312,10 @@ export class AutomationService {
           ? payload.tags.map((tag) => String(tag))
           : [];
 
+        if (payload.failOnce === true && actionAttempt === 1) {
+          throw new Error("Simulated transient error in save_memory");
+        }
+
         await this.memoryService.save({
           scope: this.readString(payload.scope) ?? (projectId ? "project" : "global"),
           content:
@@ -220,17 +326,78 @@ export class AutomationService {
         });
         return;
       }
+      case "external_action":
+      case "shell_execution":
+      case "mass_messaging":
+      case "remote_action":
+        throw new Error(`Accion sensible ${action.type} requiere integracion externa (Day 3+)`);
       default: {
-        throw new Error(`Tipo de accion no soportado en Day 1: ${action.type}`);
+        const exhaustive: never = action.type;
+        throw new Error(`Tipo de accion no soportado: ${String(exhaustive)}`);
       }
     }
+  }
+
+  private buildEventKey(rule: AutomationRule, event: DomainEvent) {
+    const taskId = this.readString(event.payload.taskId) ?? "";
+    const projectId = this.readString(event.payload.projectId) ?? "";
+    const raw = JSON.stringify(event.payload);
+    const hash = createHash("sha1").update(raw).digest("hex").slice(0, 12);
+    return `${rule.id}:${event.type}:${projectId}:${taskId}:${hash}`;
+  }
+
+  private isAlreadyProcessed(eventKey: string) {
+    const row = this.connection
+      .prepare(
+        `SELECT event_key
+         FROM processed_events
+         WHERE event_key = ?`
+      )
+      .get(eventKey) as { event_key: string } | undefined;
+    return Boolean(row);
+  }
+
+  private markAsProcessed(eventKey: string) {
+    this.connection
+      .prepare(
+        `INSERT OR IGNORE INTO processed_events (event_key, processed_at)
+         VALUES (?, ?)`
+      )
+      .run(eventKey, new Date().toISOString());
+  }
+
+  private mapRule(row: RuleRow): AutomationRule {
+    return {
+      id: row.id,
+      name: row.name,
+      trigger: {
+        type: row.trigger_type,
+        ...(row.trigger_filter_json
+          ? { filter: JSON.parse(row.trigger_filter_json) as Record<string, string> }
+          : {})
+      },
+      actions: JSON.parse(row.actions_json) as Action[],
+      enabled: row.enabled === 1
+    };
+  }
+
+  private mapRunLog(row: RunLogRow): RunLog {
+    return {
+      id: row.id,
+      ruleId: row.rule_id,
+      eventKey: row.event_key,
+      status: row.status,
+      output: row.output,
+      attempts: row.attempts,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at
+    };
   }
 
   private readString(value: unknown): string | undefined {
     if (typeof value === "string" && value.trim().length > 0) {
       return value;
     }
-
     return undefined;
   }
 }

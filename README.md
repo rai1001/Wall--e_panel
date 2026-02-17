@@ -1,15 +1,22 @@
-# Asistente Personal Modular - Day 1
+# Asistente Personal Modular - v1 Final
 
-Base funcional mínima con 5 dominios:
+Backend modular con 5 dominios:
 - `chat`
 - `project`
 - `memory`
 - `automation`
-- `policy` (RBAC + confirmaciones + auditoría básica)
+- `policy`
 
-Flujo integrado implementado:
+Flujo E2E obligatorio activo:
 
-`Crear tarea en Proyecto -> dispara Automatización -> genera mensaje en Chat -> guarda registro en Memoria`
+`Crear tarea en Proyecto -> dispara Automatizacion -> genera mensaje en Chat -> guarda Memoria`
+
+## Stack
+- Node.js + TypeScript
+- Express
+- SQLite (`better-sqlite3`)
+- JWT (`jsonwebtoken`) + password hashing (`bcryptjs`)
+- Vitest + Supertest
 
 ## Quick Start
 
@@ -18,7 +25,13 @@ npm install
 npm run dev
 ```
 
-Verificación:
+Credenciales seeded:
+- `admin@local` / `admin123`
+- `manager@local` / `manager123`
+- `member@local` / `member123`
+- `viewer@local` / `viewer123`
+
+## Verificacion
 
 ```bash
 npm run typecheck
@@ -26,32 +39,78 @@ npm test
 npm run smoke
 ```
 
-## Arquitectura inicial
+Todo en un solo comando:
 
-### Módulos
-- `src/chat`: `Conversation`, `Message`, `Participant`, y API mínima de chat.
-- `src/project`: `Project`, `Task`, `Milestone`, CRUD base y eventos de dominio.
-- `src/memory`: `MemoryItem`, `save/search`, y captura automática de eventos.
-- `src/automation`: `AutomationRule`, `Trigger`, `Action`, `RunLog`, motor trigger->acciones.
-- `src/policy`: RBAC, confirmación de acciones sensibles y auditoría por endpoints sensibles.
-- `src/shared`: `EventBus`, errores HTTP, utilidades.
+```bash
+npm run ci
+```
 
-### Relaciones entre módulos
+## Arquitectura
+
+### Modulos
+- `src/chat`: conversaciones, mensajes, participantes.
+- `src/project`: proyectos, tareas, milestones.
+- `src/memory`: memoria utilizable y busqueda.
+- `src/automation`: reglas, triggers, acciones y run logs.
+- `src/policy`: RBAC, auth JWT, aprobaciones sensibles y auditoria.
+- `src/shared`: event bus, db, errores y utilidades.
+
+### Relaciones
 1. `project` emite eventos (`task_created`, `task_status_changed`).
 2. `automation` consume eventos y ejecuta acciones.
-3. Acción `post_chat_message` usa `chat`.
-4. Acción `save_memory` usa `memory`.
-5. `memory` también captura eventos de `chat` y `project`.
-6. `policy` protege endpoints principales con `can(action, resource, role)`.
+3. `automation` usa `chat` para `post_chat_message`.
+4. `automation` usa `memory` para `save_memory`.
+5. `memory` guarda trazas automaticas de eventos de `chat` y `project`.
+6. `policy` aplica autenticacion y permisos en endpoints.
 
-### Flujo de eventos Day 1
-1. `POST /projects/:id/tasks` crea tarea.
-2. `project` emite `task_created`.
-3. `automation` evalúa reglas habilitadas con trigger `task_created`.
-4. Ejecuta acciones `post_chat_message` y `save_memory`.
-5. Registra `RunLog` y publica `automation_rule_executed`.
+### Persistencia
+- SQLite en `data/assistant.db` (modo app normal).
+- En tests se usa `:memory:` para ejecucion aislada.
+- Esquema inicial en `src/shared/db/database.ts`.
 
-## Contratos API mínimos
+## Seguridad
+
+### Auth
+- `POST /auth/login` devuelve JWT.
+- Rutas de dominio exigen token Bearer.
+- `GET /auth/me` devuelve actor autenticado.
+
+### RBAC
+Roles: `admin`, `manager`, `member`, `viewer`  
+Recursos: `chat`, `proyecto`, `memoria`, `automatizacion`  
+Acciones: `create`, `read`, `update`, `delete`, `execute`
+
+| Role | chat | proyecto | memoria | automatizacion |
+| --- | --- | --- | --- | --- |
+| admin | CRUD + execute | CRUD + execute | CRUD + execute | CRUD + execute |
+| manager | CRUD | CRUD | CRUD | read + execute |
+| member | create/read/update | create/read/update | create/read/update | read + execute |
+| viewer | read | read | read | read |
+
+Implementacion:
+- `src/policy/rbac.ts`
+- `src/policy/middleware.ts`
+
+### Acciones sensibles y aprobaciones
+Acciones sensibles:
+- `external_action`
+- `shell_execution`
+- `mass_messaging`
+- `remote_action`
+
+Flujo:
+1. Se intenta crear/testear regla sensible.
+2. API responde `412 ApprovalRequiredError` con `approvalId`.
+3. `admin` o `manager` aprueba en `/policy/approvals/:id/approve`.
+4. Se reintenta con headers:
+   - `x-confirmed: true`
+   - `x-approval-id: <approvalId>`
+
+## Endpoints principales
+
+### Auth
+- `POST /auth/login`
+- `GET /auth/me`
 
 ### Chat
 - `POST /chat/conversations`
@@ -78,44 +137,26 @@ npm run smoke
 - `POST /automation/rules/:id/test`
 - `GET /automation/runs`
 
-## RBAC Day 1
+### Policy
+- `GET /policy/approvals`
+- `POST /policy/approvals/:id/approve`
+- `POST /policy/approvals/:id/reject`
+- `GET /policy/audit`
 
-Roles: `admin`, `manager`, `member`, `viewer`  
-Recursos: `chat`, `proyecto`, `memoria`, `automatizacion`  
-Acciones: `create`, `read`, `update`, `delete`, `execute`
+### Onboarding
+- `POST /onboarding/bootstrap-flow`
 
-| Role | chat | proyecto | memoria | automatizacion |
-| --- | --- | --- | --- | --- |
-| admin | CRUD + execute | CRUD + execute | CRUD + execute | CRUD + execute |
-| manager | CRUD | CRUD | CRUD | read + execute |
-| member | create/read/update | create/read/update | create/read/update | read + execute |
-| viewer | read | read | read | read |
+### OpenAPI
+- `GET /openapi.yaml`
+- Especificacion completa en `docs/openapi.yaml`.
 
-Implementación:
-- Matriz y `can`: `src/policy/rbac.ts`
-- Middleware RBAC: `src/policy/middleware.ts`
+## Resiliencia en automatizacion
+- Reintentos por accion (`maxAttempts`, default 3).
+- Idempotencia por `event_key` en `processed_events`.
+- Run logs persistentes con estado, salida y cantidad de intentos.
 
-## Seguridad Day 1
-
-- Confirmación explícita para acciones sensibles (`external_action`, `shell_execution`, `mass_messaging`, `remote_action`) mediante header `x-confirmed: true`.
-- Auditoría básica en endpoints sensibles de automatización (actor, role, acción, recurso, timestamp).
-
-Implementación:
-- Confirmación: `src/policy/approval.ts`
-- Auditoría: `src/policy/audit.service.ts`
-
-## Eventos de dominio soportados
-
-- `task_created`
-- `task_status_changed`
-- `chat_message_created`
-- `memory_saved`
-- `automation_rule_executed`
-
-## Decisiones técnicas Day 1
-
-1. Stack Node.js/TypeScript + Express para iteración rápida.
-2. Persistencia in-memory para validar contratos y flujo E2E.
-3. Integración entre dominios por `EventBus` in-process.
-4. Prioridad de seguridad por RBAC y confirmaciones antes de automatización avanzada.
-5. Tests unitarios por dominio + test de integración del flujo completo + smoke script.
+## Documentacion tecnica
+- ADR Day 1: `docs/adr-day1.md`
+- ADR Day 2: `docs/adr-day2.md`
+- Checklist Day 2 ejecutado: `docs/day2-checklist.md`
+- Siguientes mejoras: `docs/day3-checklist.md`

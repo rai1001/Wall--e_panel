@@ -2,11 +2,19 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../../src/app";
 
+async function login(app: ReturnType<typeof createApp>, email: string, password: string) {
+  const response = await request(app).post("/auth/login").send({ email, password });
+  expect(response.status).toBe(200);
+  return response.body.token as string;
+}
+
 describe("Day 1 integrated flow", () => {
   it("Proyecto -> Automatizacion -> Chat -> Memoria", async () => {
     const app = createApp();
-    const adminHeaders = { "x-role": "admin", "x-actor-id": "rai" };
-    const viewerHeaders = { "x-role": "viewer", "x-actor-id": "rai-view" };
+    const adminToken = await login(app, "admin@local", "admin123");
+    const viewerToken = await login(app, "viewer@local", "viewer123");
+    const adminHeaders = { authorization: `Bearer ${adminToken}` };
+    const viewerHeaders = { authorization: `Bearer ${viewerToken}` };
 
     const projectResponse = await request(app)
       .post("/projects")

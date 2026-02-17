@@ -1,9 +1,28 @@
 import request from "supertest";
 import { createApp } from "../src/app";
 
+async function login(app: ReturnType<typeof createApp>) {
+  const auth = await request(app)
+    .post("/auth/login")
+    .send({ email: "admin@local", password: "admin123" });
+  if (auth.status !== 200) {
+    throw new Error(`No se pudo autenticar smoke admin: ${auth.status}`);
+  }
+  return String(auth.body.token);
+}
+
 async function run() {
   const app = createApp();
-  const adminHeaders = { "x-role": "admin", "x-actor-id": "smoke-admin" };
+  const adminToken = await login(app);
+  const viewerAuth = await request(app)
+    .post("/auth/login")
+    .send({ email: "viewer@local", password: "viewer123" });
+  if (viewerAuth.status !== 200) {
+    throw new Error(`No se pudo autenticar smoke viewer: ${viewerAuth.status}`);
+  }
+  const viewerToken = String(viewerAuth.body.token);
+  const adminHeaders = { authorization: `Bearer ${adminToken}` };
+  const viewerHeaders = { authorization: `Bearer ${viewerToken}` };
 
   const project = await request(app)
     .post("/projects")
@@ -51,10 +70,10 @@ async function run() {
 
   const messages = await request(app)
     .get(`/chat/conversations/${conversationId}/messages`)
-    .set({ "x-role": "viewer", "x-actor-id": "smoke-viewer" });
+    .set(viewerHeaders);
   const memory = await request(app)
     .get("/memory/search?tags=automation")
-    .set({ "x-role": "viewer", "x-actor-id": "smoke-viewer" });
+    .set(viewerHeaders);
 
   if (messages.status !== 200 || messages.body.length < 1) {
     throw new Error("No se detectaron mensajes automáticos en chat");

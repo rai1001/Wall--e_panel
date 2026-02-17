@@ -1,14 +1,43 @@
 import { Router } from "express";
-import { assertConfirmed, hasSensitiveActions } from "../policy/approval";
+import { hasSensitiveActions } from "../policy/approval";
+import { ApprovalService } from "../policy/approval.service";
 import { AuditService, auditSensitiveAction } from "../policy/audit.service";
 import { requirePermission } from "../policy/middleware";
 import { asyncHandler } from "../shared/http/async-handler";
-import { AppError } from "../shared/http/errors";
+import { AppError, ApprovalRequiredError } from "../shared/http/errors";
+import { Action } from "../types/domain";
 import { AutomationService } from "./automation.service";
+
+function ensureSensitiveApproval(
+  approvalService: ApprovalService,
+  actorId: string,
+  approvalIdHeader: string | undefined,
+  actionType: string,
+  payload: Record<string, unknown>,
+  confirmed: boolean
+) {
+  if (!confirmed || !approvalIdHeader) {
+    const approval = approvalService.request({
+      actionType,
+      requestedBy: actorId,
+      payload
+    });
+
+    throw new ApprovalRequiredError("Accion sensible requiere aprobacion explicita", {
+      approvalId: approval.id,
+      status: approval.status,
+      nextStep:
+        "Aprobar en POST /policy/approvals/:id/approve y reintentar con x-confirmed:true + x-approval-id"
+    });
+  }
+
+  approvalService.ensureApproved(approvalIdHeader);
+}
 
 export function createAutomationRouter(
   automationService: AutomationService,
-  auditService: AuditService
+  auditService: AuditService,
+  approvalService: ApprovalService
 ) {
   const router = Router();
 
@@ -17,24 +46,33 @@ export function createAutomationRouter(
     requirePermission("create", "automatizacion"),
     auditSensitiveAction(auditService, "create_rule", "automatizacion"),
     asyncHandler(async (req, res) => {
-      const actions = req.body.actions;
+      const actions = req.body.actions as Action[];
       if (!Array.isArray(actions) || actions.length === 0) {
         throw new AppError("actions es obligatorio y debe ser arreglo", 400);
       }
 
-      if (hasSensitiveActions(actions)) {
-        assertConfirmed(req);
+      const isSensitive = hasSensitiveActions(actions);
+      if (isSensitive) {
+        ensureSensitiveApproval(
+          approvalService,
+          req.actorId,
+          req.header("x-approval-id") ?? undefined,
+          "automation_create_rule",
+          {
+            name: req.body.name,
+            trigger: req.body.trigger,
+            actions
+          },
+          req.header("x-confirmed") === "true"
+        );
       }
 
-      const rule = automationService.createRule(
-        {
-          name: req.body.name,
-          trigger: req.body.trigger,
-          actions,
-          enabled: req.body.enabled
-        },
-        req.header("x-confirmed") === "true"
-      );
+      const rule = automationService.createRule({
+        name: req.body.name,
+        trigger: req.body.trigger,
+        actions,
+        enabled: req.body.enabled
+      });
 
       res.status(201).json(rule);
     })
@@ -52,13 +90,23 @@ export function createAutomationRouter(
 
       const rule = automationService.getRuleById(ruleId);
       if (hasSensitiveActions(rule.actions)) {
-        assertConfirmed(req);
+        ensureSensitiveApproval(
+          approvalService,
+          req.actorId,
+          req.header("x-approval-id") ?? undefined,
+          "automation_test_rule",
+          {
+            ruleId,
+            eventType: req.body.eventType,
+            eventPayload: req.body.eventPayload
+          },
+          req.header("x-confirmed") === "true"
+        );
       }
 
       const runLog = await automationService.testRule(ruleId, {
         eventType: req.body.eventType,
-        eventPayload: req.body.eventPayload,
-        confirmed: req.header("x-confirmed") === "true"
+        eventPayload: req.body.eventPayload
       });
 
       res.status(200).json(runLog);

@@ -3,13 +3,20 @@ import { AutomationService } from "../../src/automation/automation.service";
 import { ChatService } from "../../src/chat/chat.service";
 import { MemoryService } from "../../src/memory/memory.service";
 import { EventBus } from "../../src/shared/events/event-bus";
+import { createDatabaseClient } from "../../src/shared/db/database";
 
 describe("AutomationService", () => {
   it("ejecuta regla task_created -> post_chat_message + save_memory", async () => {
+    const dbClient = createDatabaseClient(":memory:");
     const eventBus = new EventBus();
-    const chatService = new ChatService(eventBus);
-    const memoryService = new MemoryService(eventBus);
-    const automationService = new AutomationService(eventBus, chatService, memoryService);
+    const chatService = new ChatService(eventBus, dbClient.connection);
+    const memoryService = new MemoryService(eventBus, dbClient.connection);
+    const automationService = new AutomationService(
+      eventBus,
+      chatService,
+      memoryService,
+      dbClient.connection
+    );
 
     automationService.start();
 
@@ -52,22 +59,40 @@ describe("AutomationService", () => {
     expect(messages.length).toBeGreaterThanOrEqual(1);
     expect(memories.length).toBeGreaterThanOrEqual(1);
     expect(runs[0]?.status).toBe("success");
+    dbClient.close();
   });
 
-  it("requiere confirmacion para acciones sensibles", () => {
+  it("evita reprocesar evento igual (idempotencia)", async () => {
+    const dbClient = createDatabaseClient(":memory:");
     const eventBus = new EventBus();
+    const chatService = new ChatService(eventBus, dbClient.connection);
+    const memoryService = new MemoryService(eventBus, dbClient.connection);
     const automationService = new AutomationService(
       eventBus,
-      new ChatService(eventBus),
-      new MemoryService(eventBus)
+      chatService,
+      memoryService,
+      dbClient.connection
     );
+    automationService.start();
 
-    expect(() =>
-      automationService.createRule({
-        name: "Regla sensible",
-        trigger: { type: "task_created" },
-        actions: [{ type: "shell_execution" }]
-      })
-    ).toThrowError();
+    chatService.createConversation({ title: "chat", projectId: "project_1" });
+    automationService.createRule({
+      name: "Idempotent Rule",
+      trigger: { type: "task_created" },
+      actions: [{ type: "save_memory" }]
+    });
+
+    const event = {
+      type: "task_created" as const,
+      payload: { projectId: "project_1", taskId: "task_1", taskTitle: "Idempotencia" },
+      occurredAt: new Date().toISOString()
+    };
+
+    await eventBus.publish(event);
+    await eventBus.publish(event);
+
+    const runs = automationService.listRunLogs();
+    expect(runs.length).toBe(1);
+    dbClient.close();
   });
 });

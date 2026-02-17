@@ -1,5 +1,6 @@
+import { Database } from "better-sqlite3";
 import { createId } from "../shared/id";
-import { NotFoundError } from "../shared/http/errors";
+import { AppError, NotFoundError } from "../shared/http/errors";
 import { Conversation, Message, MessageRole, Participant } from "../types/domain";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 
@@ -16,46 +17,99 @@ export interface SendMessageInput {
   actorId?: string;
 }
 
-export class ChatService {
-  private readonly conversations: Conversation[] = [];
-  private readonly messages: Message[] = [];
-  private readonly participants: Participant[] = [];
+interface ConversationRow {
+  id: string;
+  project_id: string | null;
+  title: string;
+  created_at: string;
+}
 
-  constructor(private readonly eventBus: EventBus) {}
+interface MessageRow {
+  id: string;
+  conversation_id: string;
+  role: MessageRole;
+  content: string;
+  created_at: string;
+}
+
+interface ParticipantRow {
+  id: string;
+  conversation_id: string;
+  actor_type: string;
+  actor_id: string;
+}
+
+export class ChatService {
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly connection: Database
+  ) {}
 
   createConversation(input: CreateConversationInput) {
+    const title = input.title?.trim();
+    if (!title) {
+      throw new AppError("title es requerido para crear conversacion", 400);
+    }
+
     const conversation: Conversation = {
       id: createId("conv"),
-      title: input.title,
+      title,
       createdAt: new Date().toISOString(),
       ...(input.projectId ? { projectId: input.projectId } : {})
     };
 
-    this.conversations.push(conversation);
+    this.connection
+      .prepare(
+        `INSERT INTO conversations (id, project_id, title, created_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(conversation.id, conversation.projectId ?? null, conversation.title, conversation.createdAt);
+
+    const insertParticipant = this.connection.prepare(
+      `INSERT INTO participants (id, conversation_id, actor_type, actor_id)
+       VALUES (?, ?, ?, ?)`
+    );
 
     for (const participant of input.participants ?? []) {
-      this.participants.push({
-        id: createId("participant"),
-        conversationId: conversation.id,
-        actorType: participant.actorType,
-        actorId: participant.actorId
-      });
+      insertParticipant.run(
+        createId("participant"),
+        conversation.id,
+        participant.actorType,
+        participant.actorId
+      );
     }
 
     return conversation;
   }
 
   getConversationById(conversationId: string) {
-    const conversation = this.conversations.find((item) => item.id === conversationId);
-    if (!conversation) {
+    const row = this.connection
+      .prepare(
+        `SELECT id, project_id, title, created_at
+         FROM conversations
+         WHERE id = ?`
+      )
+      .get(conversationId) as ConversationRow | undefined;
+
+    if (!row) {
       throw new NotFoundError(`Conversation ${conversationId} no encontrada`);
     }
 
-    return conversation;
+    return this.mapConversation(row);
   }
 
   findConversationByProjectId(projectId: string) {
-    return this.conversations.find((item) => item.projectId === projectId);
+    const row = this.connection
+      .prepare(
+        `SELECT id, project_id, title, created_at
+         FROM conversations
+         WHERE project_id = ?
+         ORDER BY created_at ASC
+         LIMIT 1`
+      )
+      .get(projectId) as ConversationRow | undefined;
+
+    return row ? this.mapConversation(row) : undefined;
   }
 
   createSystemConversationForProject(projectId: string) {
@@ -68,32 +122,43 @@ export class ChatService {
 
   async sendMessage(conversationId: string, input: SendMessageInput) {
     this.getConversationById(conversationId);
+    const content = input.content?.trim();
+    if (!content) {
+      throw new AppError("content es requerido para enviar mensaje", 400);
+    }
 
     const message: Message = {
       id: createId("msg"),
       conversationId,
       role: input.role,
-      content: input.content,
+      content,
       createdAt: new Date().toISOString()
     };
 
-    this.messages.push(message);
+    this.connection
+      .prepare(
+        `INSERT INTO messages (id, conversation_id, role, content, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(message.id, message.conversationId, message.role, message.content, message.createdAt);
 
     if (input.actorType && input.actorId) {
-      const alreadyExists = this.participants.some(
-        (participant) =>
-          participant.conversationId === conversationId &&
-          participant.actorType === input.actorType &&
-          participant.actorId === input.actorId
-      );
+      const exists = this.connection
+        .prepare(
+          `SELECT 1
+           FROM participants
+           WHERE conversation_id = ? AND actor_type = ? AND actor_id = ?
+           LIMIT 1`
+        )
+        .get(conversationId, input.actorType, input.actorId) as { 1: number } | undefined;
 
-      if (!alreadyExists) {
-        this.participants.push({
-          id: createId("participant"),
-          conversationId,
-          actorType: input.actorType,
-          actorId: input.actorId
-        });
+      if (!exists) {
+        this.connection
+          .prepare(
+            `INSERT INTO participants (id, conversation_id, actor_type, actor_id)
+             VALUES (?, ?, ?, ?)`
+          )
+          .run(createId("participant"), conversationId, input.actorType, input.actorId);
       }
     }
 
@@ -108,17 +173,63 @@ export class ChatService {
     };
 
     await this.eventBus.publish(event);
-
     return message;
   }
 
   listMessages(conversationId: string) {
     this.getConversationById(conversationId);
-    return this.messages.filter((message) => message.conversationId === conversationId);
+
+    const rows = this.connection
+      .prepare(
+        `SELECT id, conversation_id, role, content, created_at
+         FROM messages
+         WHERE conversation_id = ?
+         ORDER BY created_at ASC`
+      )
+      .all(conversationId) as MessageRow[];
+
+    return rows.map((row) => this.mapMessage(row));
   }
 
   listParticipants(conversationId: string) {
     this.getConversationById(conversationId);
-    return this.participants.filter((participant) => participant.conversationId === conversationId);
+
+    const rows = this.connection
+      .prepare(
+        `SELECT id, conversation_id, actor_type, actor_id
+         FROM participants
+         WHERE conversation_id = ?`
+      )
+      .all(conversationId) as ParticipantRow[];
+
+    return rows.map((row) => this.mapParticipant(row));
+  }
+
+  private mapConversation(row: ConversationRow): Conversation {
+    return {
+      id: row.id,
+      title: row.title,
+      createdAt: row.created_at,
+      ...(row.project_id ? { projectId: row.project_id } : {})
+    };
+  }
+
+  private mapMessage(row: MessageRow): Message {
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      role: row.role,
+      content: row.content,
+      createdAt: row.created_at
+    };
+  }
+
+  private mapParticipant(row: ParticipantRow): Participant {
+    return {
+      id: row.id,
+      conversationId: row.conversation_id,
+      actorType: row.actor_type,
+      actorId: row.actor_id
+    };
   }
 }

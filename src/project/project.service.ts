@@ -1,6 +1,7 @@
+import { Database } from "better-sqlite3";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { createId } from "../shared/id";
-import { NotFoundError } from "../shared/http/errors";
+import { AppError, NotFoundError } from "../shared/http/errors";
 import { Milestone, Project, ProjectStatus, Task, TaskStatus } from "../types/domain";
 
 export interface CreateProjectInput {
@@ -25,89 +26,155 @@ export interface CreateMilestoneInput {
   status?: Milestone["status"];
 }
 
-export class ProjectService {
-  private readonly projects: Project[] = [];
-  private readonly tasks: Task[] = [];
-  private readonly milestones: Milestone[] = [];
+interface ProjectRow {
+  id: string;
+  name: string;
+  status: ProjectStatus;
+  created_at: string;
+}
 
-  constructor(private readonly eventBus: EventBus) {}
+interface TaskRow {
+  id: string;
+  project_id: string;
+  title: string;
+  status: TaskStatus;
+  assignee: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface MilestoneRow {
+  id: string;
+  project_id: string;
+  title: string;
+  due_date: string | null;
+  status: Milestone["status"];
+}
+
+export class ProjectService {
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly connection: Database
+  ) {}
 
   createProject(input: CreateProjectInput) {
+    const name = input.name?.trim();
+    if (!name) {
+      throw new AppError("name es requerido para crear proyecto", 400);
+    }
+
     const project: Project = {
       id: createId("project"),
-      name: input.name,
+      name,
       status: input.status ?? "active",
       createdAt: new Date().toISOString()
     };
 
-    this.projects.push(project);
+    this.connection
+      .prepare(
+        `INSERT INTO projects (id, name, status, created_at)
+         VALUES (?, ?, ?, ?)`
+      )
+      .run(project.id, project.name, project.status, project.createdAt);
+
     return project;
   }
 
   listProjects() {
-    return [...this.projects];
+    const rows = this.connection
+      .prepare(
+        `SELECT id, name, status, created_at
+         FROM projects
+         ORDER BY created_at DESC`
+      )
+      .all() as ProjectRow[];
+
+    return rows.map((row) => this.mapProject(row));
   }
 
   getProjectById(projectId: string) {
-    const project = this.projects.find((item) => item.id === projectId);
-    if (!project) {
+    const row = this.connection
+      .prepare(
+        `SELECT id, name, status, created_at
+         FROM projects
+         WHERE id = ?`
+      )
+      .get(projectId) as ProjectRow | undefined;
+
+    if (!row) {
       throw new NotFoundError(`Proyecto ${projectId} no encontrado`);
     }
 
-    return project;
+    return this.mapProject(row);
   }
 
   updateProject(projectId: string, input: UpdateProjectInput) {
     const project = this.getProjectById(projectId);
-    if (input.name) {
-      project.name = input.name;
-    }
-    if (input.status) {
-      project.status = input.status;
-    }
+    const nextName = input.name?.trim() || project.name;
+    const nextStatus = input.status ?? project.status;
 
-    return project;
+    this.connection
+      .prepare(
+        `UPDATE projects
+         SET name = ?, status = ?
+         WHERE id = ?`
+      )
+      .run(nextName, nextStatus, projectId);
+
+    return this.getProjectById(projectId);
   }
 
   deleteProject(projectId: string) {
     this.getProjectById(projectId);
-
-    const projectIndex = this.projects.findIndex((item) => item.id === projectId);
-    this.projects.splice(projectIndex, 1);
-
-    for (let index = this.tasks.length - 1; index >= 0; index -= 1) {
-      if (this.tasks[index]?.projectId === projectId) {
-        this.tasks.splice(index, 1);
-      }
-    }
-
-    for (let index = this.milestones.length - 1; index >= 0; index -= 1) {
-      if (this.milestones[index]?.projectId === projectId) {
-        this.milestones.splice(index, 1);
-      }
-    }
+    this.connection.prepare("DELETE FROM projects WHERE id = ?").run(projectId);
   }
 
   listTasks(projectId: string) {
     this.getProjectById(projectId);
-    return this.tasks.filter((task) => task.projectId === projectId);
+    const rows = this.connection
+      .prepare(
+        `SELECT id, project_id, title, status, assignee, created_at, updated_at
+         FROM tasks
+         WHERE project_id = ?
+         ORDER BY created_at DESC`
+      )
+      .all(projectId) as TaskRow[];
+
+    return rows.map((row) => this.mapTask(row));
   }
 
   async createTask(projectId: string, input: CreateTaskInput) {
     this.getProjectById(projectId);
+    const title = input.title?.trim();
+    if (!title) {
+      throw new AppError("title es requerido para crear task", 400);
+    }
 
     const now = new Date().toISOString();
     const task: Task = {
       id: createId("task"),
       projectId,
-      title: input.title,
+      title,
       status: input.status ?? "todo",
       createdAt: now,
       updatedAt: now,
       ...(input.assignee ? { assignee: input.assignee } : {})
     };
 
-    this.tasks.push(task);
+    this.connection
+      .prepare(
+        `INSERT INTO tasks (id, project_id, title, status, assignee, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        task.id,
+        task.projectId,
+        task.title,
+        task.status,
+        task.assignee ?? null,
+        task.createdAt,
+        task.updatedAt
+      );
 
     const event: DomainEvent = {
       type: "task_created",
@@ -126,40 +193,108 @@ export class ProjectService {
 
   async updateTaskStatus(projectId: string, taskId: string, status: TaskStatus) {
     this.getProjectById(projectId);
-    const task = this.tasks.find((candidate) => candidate.projectId === projectId && candidate.id === taskId);
+    const existing = this.connection
+      .prepare(
+        `SELECT id, project_id, title, status, assignee, created_at, updated_at
+         FROM tasks
+         WHERE project_id = ? AND id = ?`
+      )
+      .get(projectId, taskId) as TaskRow | undefined;
 
-    if (!task) {
+    if (!existing) {
       throw new NotFoundError(`Task ${taskId} no encontrada en proyecto ${projectId}`);
     }
 
-    task.status = status;
-    task.updatedAt = new Date().toISOString();
+    const updatedAt = new Date().toISOString();
+    this.connection
+      .prepare(
+        `UPDATE tasks
+         SET status = ?, updated_at = ?
+         WHERE id = ?`
+      )
+      .run(status, updatedAt, taskId);
 
     const event: DomainEvent = {
       type: "task_status_changed",
       payload: {
         projectId,
-        taskId: task.id,
-        status: task.status
+        taskId,
+        status
       },
       occurredAt: new Date().toISOString()
     };
 
     await this.eventBus.publish(event);
-    return task;
+
+    const row = this.connection
+      .prepare(
+        `SELECT id, project_id, title, status, assignee, created_at, updated_at
+         FROM tasks
+         WHERE id = ?`
+      )
+      .get(taskId) as TaskRow;
+    return this.mapTask(row);
   }
 
   createMilestone(projectId: string, input: CreateMilestoneInput) {
     this.getProjectById(projectId);
+    const title = input.title?.trim();
+    if (!title) {
+      throw new AppError("title es requerido para crear milestone", 400);
+    }
+
     const milestone: Milestone = {
       id: createId("milestone"),
       projectId,
-      title: input.title,
+      title,
       status: input.status ?? "planned",
       ...(input.dueDate ? { dueDate: input.dueDate } : {})
     };
 
-    this.milestones.push(milestone);
+    this.connection
+      .prepare(
+        `INSERT INTO milestones (id, project_id, title, due_date, status)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        milestone.id,
+        milestone.projectId,
+        milestone.title,
+        milestone.dueDate ?? null,
+        milestone.status
+      );
+
     return milestone;
+  }
+
+  private mapProject(row: ProjectRow): Project {
+    return {
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      createdAt: row.created_at
+    };
+  }
+
+  private mapTask(row: TaskRow): Task {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      title: row.title,
+      status: row.status,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      ...(row.assignee ? { assignee: row.assignee } : {})
+    };
+  }
+
+  private mapMilestone(row: MilestoneRow): Milestone {
+    return {
+      id: row.id,
+      projectId: row.project_id,
+      title: row.title,
+      status: row.status,
+      ...(row.due_date ? { dueDate: row.due_date } : {})
+    };
   }
 }

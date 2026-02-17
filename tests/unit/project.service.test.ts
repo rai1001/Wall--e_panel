@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { EventBus } from "../../src/shared/events/event-bus";
 import { ProjectService } from "../../src/project/project.service";
+import { createDatabaseClient } from "../../src/shared/db/database";
 
 describe("ProjectService", () => {
   it("crea proyecto, crea tarea y actualiza su estado", async () => {
     const eventBus = new EventBus();
-    const service = new ProjectService(eventBus);
+    const dbClient = createDatabaseClient(":memory:");
+    const service = new ProjectService(eventBus, dbClient.connection);
     const seenEvents: string[] = [];
 
     eventBus.subscribe("task_created", (event) => {
@@ -25,5 +27,6 @@ describe("ProjectService", () => {
     expect(updated.status).toBe("in_progress");
     expect(seenEvents).toContain("task_created");
     expect(seenEvents).toContain("task_status_changed");
+    dbClient.close();
   });
 });

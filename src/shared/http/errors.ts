@@ -24,9 +24,16 @@ export class ForbiddenError extends AppError {
   }
 }
 
-export class ApprovalRequiredError extends AppError {
+export class UnauthorizedError extends AppError {
   constructor(message: string) {
-    super(message, 412);
+    super(message, 401);
+    this.name = "UnauthorizedError";
+  }
+}
+
+export class ApprovalRequiredError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 412, details);
     this.name = "ApprovalRequiredError";
   }
 }

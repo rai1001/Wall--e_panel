@@ -1,35 +1,61 @@
 import { AutomationService } from "./automation/automation.service";
 import { ChatService } from "./chat/chat.service";
 import { MemoryService } from "./memory/memory.service";
+import { ApprovalService } from "./policy/approval.service";
 import { AuditService } from "./policy/audit.service";
+import { AuthService } from "./policy/auth.service";
 import { ProjectService } from "./project/project.service";
+import { createDatabaseClient, DatabaseClient } from "./shared/db/database";
 import { EventBus } from "./shared/events/event-bus";
 
 export interface AppContext {
+  dbClient: DatabaseClient;
   eventBus: EventBus;
+  authService: AuthService;
+  approvalService: ApprovalService;
+  auditService: AuditService;
   chatService: ChatService;
   projectService: ProjectService;
   memoryService: MemoryService;
   automationService: AutomationService;
-  auditService: AuditService;
+  dispose: () => void;
 }
 
-export function createAppContext(): AppContext {
+export interface AppContextOptions {
+  dbPath?: string;
+}
+
+export function createAppContext(options: AppContextOptions = {}): AppContext {
+  const dbClient = createDatabaseClient(options.dbPath);
   const eventBus = new EventBus();
-  const chatService = new ChatService(eventBus);
-  const projectService = new ProjectService(eventBus);
-  const memoryService = new MemoryService(eventBus);
-  const automationService = new AutomationService(eventBus, chatService, memoryService);
-  const auditService = new AuditService();
+  const authService = new AuthService(dbClient.connection);
+  const approvalService = new ApprovalService(dbClient.connection);
+  const auditService = new AuditService(dbClient.connection);
+  const chatService = new ChatService(eventBus, dbClient.connection);
+  const projectService = new ProjectService(eventBus, dbClient.connection);
+  const memoryService = new MemoryService(eventBus, dbClient.connection);
+  const automationService = new AutomationService(
+    eventBus,
+    chatService,
+    memoryService,
+    dbClient.connection
+  );
+
   memoryService.enableEventCapture();
   automationService.start();
 
   return {
+    dbClient,
     eventBus,
+    authService,
+    approvalService,
+    auditService,
     chatService,
     projectService,
     memoryService,
     automationService,
-    auditService
+    dispose: () => {
+      dbClient.close();
+    }
   };
 }

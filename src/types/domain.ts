@@ -66,6 +66,15 @@ export interface MemoryItem {
   tags: string[];
 }
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  role: Role;
+  passwordHash: string;
+  createdAt: string;
+}
+
 export type DomainEventType =
   | "task_created"
   | "task_status_changed"
@@ -102,8 +111,23 @@ export interface AutomationRule {
 export interface RunLog {
   id: string;
   ruleId: string;
+  eventKey?: string;
   status: "success" | "failed";
   output: string;
+  attempts?: number;
   startedAt: string;
   finishedAt: string;
+}
+
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
+export interface ApprovalRequest {
+  id: string;
+  actionType: string;
+  payload: Record<string, unknown>;
+  status: ApprovalStatus;
+  requestedBy: string;
+  approvedBy?: string;
+  requestedAt: string;
+  approvedAt?: string;
 }

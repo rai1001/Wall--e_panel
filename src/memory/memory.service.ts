@@ -1,5 +1,7 @@
+import { Database } from "better-sqlite3";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { createId } from "../shared/id";
+import { AppError } from "../shared/http/errors";
 import { MemoryItem } from "../types/domain";
 
 export interface SaveMemoryInput {
@@ -16,10 +18,20 @@ export interface SearchMemoryInput {
   scope?: string;
 }
 
-export class MemoryService {
-  private readonly items: MemoryItem[] = [];
+interface MemoryRow {
+  id: string;
+  scope: string;
+  content: string;
+  source: string;
+  timestamp: string;
+  tags_json: string;
+}
 
-  constructor(private readonly eventBus: EventBus) {}
+export class MemoryService {
+  constructor(
+    private readonly eventBus: EventBus,
+    private readonly connection: Database
+  ) {}
 
   enableEventCapture() {
     this.eventBus.subscribe("task_created", async (event) => {
@@ -42,16 +54,33 @@ export class MemoryService {
   }
 
   async save(input: SaveMemoryInput) {
+    const content = input.content?.trim();
+    if (!content) {
+      throw new AppError("content es requerido para save memory", 400);
+    }
+
     const item: MemoryItem = {
       id: createId("memory"),
       scope: input.scope,
-      content: input.content,
+      content,
       source: input.source,
       timestamp: input.timestamp ?? new Date().toISOString(),
       tags: input.tags ?? []
     };
 
-    this.items.push(item);
+    this.connection
+      .prepare(
+        `INSERT INTO memory_items (id, scope, content, source, timestamp, tags_json)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        item.id,
+        item.scope,
+        item.content,
+        item.source,
+        item.timestamp,
+        JSON.stringify(item.tags)
+      );
 
     const event: DomainEvent = {
       type: "memory_saved",
@@ -67,27 +96,52 @@ export class MemoryService {
   }
 
   search(input: SearchMemoryInput) {
+    const rows = this.connection
+      .prepare(
+        `SELECT id, scope, content, source, timestamp, tags_json
+         FROM memory_items
+         ORDER BY timestamp DESC`
+      )
+      .all() as MemoryRow[];
+
     const query = input.q?.trim().toLowerCase();
     const tags = input.tags?.filter(Boolean) ?? [];
 
-    return this.items.filter((item) => {
-      if (input.scope && item.scope !== input.scope) {
-        return false;
-      }
-
-      if (query && !item.content.toLowerCase().includes(query)) {
-        return false;
-      }
-
-      if (tags.length > 0 && !tags.every((tag) => item.tags.includes(tag))) {
-        return false;
-      }
-
-      return true;
-    });
+    return rows
+      .map((row) => this.mapMemory(row))
+      .filter((item) => {
+        if (input.scope && item.scope !== input.scope) {
+          return false;
+        }
+        if (query && !item.content.toLowerCase().includes(query)) {
+          return false;
+        }
+        if (tags.length > 0 && !tags.every((tag) => item.tags.includes(tag))) {
+          return false;
+        }
+        return true;
+      });
   }
 
   listAll() {
-    return [...this.items];
+    const rows = this.connection
+      .prepare(
+        `SELECT id, scope, content, source, timestamp, tags_json
+         FROM memory_items
+         ORDER BY timestamp DESC`
+      )
+      .all() as MemoryRow[];
+    return rows.map((row) => this.mapMemory(row));
+  }
+
+  private mapMemory(row: MemoryRow): MemoryItem {
+    return {
+      id: row.id,
+      scope: row.scope,
+      content: row.content,
+      source: row.source,
+      timestamp: row.timestamp,
+      tags: JSON.parse(row.tags_json) as string[]
+    };
   }
 }
