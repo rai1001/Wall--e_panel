@@ -165,6 +165,8 @@ Detailed troubleshooting:
 
 ```bash
 npm run typecheck
+npm run security:scan
+npm run openapi:check
 npm test
 npm run smoke
 npm run reindex

@@ -39,11 +39,23 @@ paths:
         "423": { description: Temporarily locked }
         "429": { description: Rate limited }
 
+  /v1/auth/logout:
+    post:
+      summary: Logout and clear session cookie
+      responses:
+        "200": { description: Session cleared }
+
   /v1/auth/me:
     get:
       summary: Current authenticated actor
       responses:
         "200": { description: Actor data }
+
+  /v1/auth/keys:
+    get:
+      summary: JWT key metadata (admin only)
+      responses:
+        "200": { description: Key metadata }
 
   /v1/projects:
     post:
@@ -56,6 +68,15 @@ paths:
         "200": { description: OK }
 
   /v1/projects/{id}:
+    get:
+      summary: Get project by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Project detail }
     patch:
       summary: Update project name/status
       parameters:
@@ -65,6 +86,15 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: Updated }
+    delete:
+      summary: Delete project
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
 
   /v1/projects/{id}/tasks:
     post:
@@ -85,6 +115,21 @@ paths:
           schema: { type: string }
       responses:
         "200": { description: OK }
+
+  /v1/projects/{id}/tasks/{taskId}/status:
+    patch:
+      summary: Update task status
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: path
+          name: taskId
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Updated }
 
   /v1/chat/conversations:
     post:
@@ -177,6 +222,37 @@ paths:
       responses:
         "200": { description: Ranked memories }
 
+  /v1/memory/panel:
+    get:
+      summary: Panel-oriented memory search with operational filters
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: projectId
+          schema: { type: string }
+        - in: query
+          name: agentId
+          schema: { type: string }
+        - in: query
+          name: scope
+          schema: { type: string }
+        - in: query
+          name: memoryType
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string }
+        - in: query
+          name: to
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200 }
+      responses:
+        "200": { description: Filtered memory list }
+
   /v1/memory/reindex:
     post:
       summary: Incremental embedding reindex
@@ -250,6 +326,17 @@ paths:
       responses:
         "200": { description: Updated }
 
+  /v1/automation/rules/{id}/test:
+    post:
+      summary: Trigger manual automation test
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Test run log }
+
   /v1/automation/runs:
     get:
       summary: List run logs
@@ -279,6 +366,17 @@ paths:
       responses:
         "200": { description: Approved }
 
+  /v1/policy/approvals/{id}/reject:
+    post:
+      summary: Reject pending sensitive action
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Rejected }
+
   /v1/policy/audit:
     get:
       summary: List audit records
@@ -297,6 +395,12 @@ paths:
       responses:
         "200": { description: OK }
 
+  /v1/ops/embedding/runtime:
+    get:
+      summary: Active embedding runtime pin (provider/model/version)
+      responses:
+        "200": { description: OK }
+
   /v1/ops/automation/health:
     get:
       summary: Automation health summary
@@ -308,6 +412,30 @@ paths:
       summary: Aggregated sensitive actions
       responses:
         "200": { description: OK }
+
+  /v1/ops/rate-limit/health:
+    get:
+      summary: Rate limit health panel data
+      responses:
+        "200": { description: OK }
+
+  /v1/onboarding/rule-templates:
+    get:
+      summary: List automation rule templates
+      responses:
+        "200": { description: OK }
+
+  /v1/onboarding/bootstrap-flow:
+    post:
+      summary: Bootstrap project + conversation + default rule
+      responses:
+        "201": { description: Flow created }
+
+  /v1/onboarding/bootstrap-from-template:
+    post:
+      summary: Create automation from onboarding template
+      responses:
+        "201": { description: Rule created }
 
   /v1/dashboard:
     get:

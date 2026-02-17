@@ -13,6 +13,8 @@ Scripts disponibles y validados:
 ```bash
 npm install
 npm run typecheck
+npm run security:scan
+npm run openapi:check
 npm test
 npm run smoke
 npm run dev
