@@ -19,6 +19,11 @@ const rateLimitQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(50).optional()
 });
 
+const heartbeatQuerySchema = z.object({
+  windowMinutes: z.coerce.number().int().positive().max(240).optional(),
+  bucketSeconds: z.coerce.number().int().positive().max(300).optional()
+});
+
 export function createOpsRouter(
   metricsService: MetricsService,
   memoryService: MemoryService,
@@ -89,6 +94,25 @@ export function createOpsRouter(
     asyncHandler(async (req, res) => {
       const limit = req.query.limit ? Number(req.query.limit) : 10;
       res.status(200).json(rateLimiter.health(limit));
+    })
+  );
+
+  router.get(
+    "/heartbeats",
+    requirePermission("read", "automatizacion"),
+    validateQuery(heartbeatQuerySchema),
+    asyncHandler(async (req, res) => {
+      const options: { windowMinutes?: number; bucketSeconds?: number } = {};
+      if (req.query.windowMinutes) {
+        options.windowMinutes = Number(req.query.windowMinutes);
+      }
+      if (req.query.bucketSeconds) {
+        options.bucketSeconds = Number(req.query.bucketSeconds);
+      }
+
+      res.status(200).json(
+        automationService.projectHeartbeats(options)
+      );
     })
   );
 

@@ -1,4 +1,5 @@
 import { AutomationService } from "./automation/automation.service";
+import { ChatAssistantService } from "./chat/chat-assistant.service";
 import { ChatService } from "./chat/chat.service";
 import { MemoryService } from "./memory/memory.service";
 import { MetricsService } from "./ops/metrics.service";
@@ -19,6 +20,7 @@ export interface AppContext {
   auditService: AuditService;
   metricsService: MetricsService;
   rateLimiter: RateLimiter;
+  chatAssistantService: ChatAssistantService;
   chatService: ChatService;
   projectService: ProjectService;
   memoryService: MemoryService;
@@ -44,6 +46,7 @@ export function createAppContext(options: AppContextOptions = {}): AppContext {
     backend: configuredRateLimitStore === "memory" ? "memory" : "db",
     connection: dbClient.connection
   });
+  const chatAssistantService = new ChatAssistantService();
   const chatService = new ChatService(eventBus, dbClient.connection);
   const projectService = new ProjectService(eventBus, dbClient.connection);
   const memoryService = new MemoryService(eventBus, dbClient.connection);
@@ -66,6 +69,7 @@ export function createAppContext(options: AppContextOptions = {}): AppContext {
     auditService,
     metricsService,
     rateLimiter,
+    chatAssistantService,
     chatService,
     projectService,
     memoryService,

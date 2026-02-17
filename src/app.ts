@@ -45,7 +45,11 @@ function readPositiveIntEnv(name: string, fallback: number) {
 
 function mountDomainRouters(router: express.Router, context: AppContext) {
   router.use("/auth", createAuthRouter(context.authService, context.rateLimiter));
-  router.use("/chat", requireAuthenticated, createChatRouter(context.chatService));
+  router.use(
+    "/chat",
+    requireAuthenticated,
+    createChatRouter(context.chatService, context.chatAssistantService)
+  );
   router.use("/projects", requireAuthenticated, createProjectRouter(context.projectService));
   router.use(
     "/memory",
@@ -113,6 +117,7 @@ export function createApp(context: AppContext = createAppContext()) {
           fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
           imgSrc: ["'self'", "data:"],
           connectSrc: ["'self'"],
+          frameSrc: ["'self'", "http://localhost:18789"],
           objectSrc: ["'none'"],
           frameAncestors: ["'none'"],
           baseUri: ["'self'"],

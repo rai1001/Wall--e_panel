@@ -189,6 +189,80 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       font-size: 12px;
       background: rgba(255, 255, 255, 0.02);
     }
+    .lamp {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      border: 1px solid transparent;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      font-weight: 700;
+    }
+    .lamp::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+    .lamp.green {
+      background: rgba(30, 193, 139, 0.12);
+      color: #88f1ce;
+      border-color: rgba(30, 193, 139, 0.45);
+    }
+    .lamp.green::before { background: #1ec18b; }
+    .lamp.yellow {
+      background: rgba(249, 190, 79, 0.16);
+      color: #ffe0a0;
+      border-color: rgba(249, 190, 79, 0.52);
+    }
+    .lamp.yellow::before { background: #f9be4f; }
+    .lamp.red {
+      background: rgba(255, 111, 111, 0.14);
+      color: #ffc2c2;
+      border-color: rgba(255, 111, 111, 0.52);
+    }
+    .lamp.red::before { background: #ff6f6f; }
+    .canvas-frame {
+      width: 100%;
+      min-height: 320px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0a1323;
+    }
+    .heartbeat-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .heartbeat-item {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .hb-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 12px;
+    }
+    .hb-bars {
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(8px, 1fr);
+      align-items: end;
+      gap: 2px;
+      height: 62px;
+    }
+    .hb-bar {
+      border-radius: 2px 2px 0 0;
+      background: linear-gradient(180deg, rgba(249, 190, 79, 0.95), rgba(30, 193, 139, 0.9));
+      min-height: 3px;
+    }
     @media (max-width: 900px) {
       .quick-grid { grid-template-columns: 1fr; }
       .quick-actions { grid-template-columns: 1fr; }
@@ -270,6 +344,11 @@ function renderOperationalDashboardHtml(token: string, role: string) {
           </select>
           <button id="refreshProjects" type="button">Refrescar</button>
         </div>
+        <div class="hint">Aprobacion de skills por proyecto (semaforo): lectura / escritura / shell.</div>
+        <table>
+          <thead><tr><th>Proyecto</th><th>Lectura</th><th>Escritura</th><th>Shell</th></tr></thead>
+          <tbody id="projectAccessBody"><tr><td colspan="4">Sin proyectos</td></tr></tbody>
+        </table>
       </article>
 
       <article class="card">
@@ -311,20 +390,55 @@ function renderOperationalDashboardHtml(token: string, role: string) {
 
       <article class="card" id="chatCard">
         <h2>Paso 5. Chat operativo</h2>
-        <div class="hint">Envio manual de mensajes. Si no existe conversacion para el proyecto, se crea al enviar.</div>
+        <div class="hint">Chat real con OpenClaw en tiempo real. Si no existe conversacion para el proyecto, se crea al enviar.</div>
         <div id="chatConversationInfo" class="conversation-note mono">Conversacion: selecciona proyecto</div>
         <form id="chatSendForm" class="row chat">
           <select id="chatRole">
             <option value="user">user</option>
-            <option value="assistant">assistant</option>
             <option value="system">system</option>
           </select>
           <input id="chatContent" placeholder="Mensaje para el chat del proyecto" required maxlength="4000" />
-          <button class="primary" type="submit">Enviar</button>
+          <button id="chatSendBtn" type="submit">Enviar solo mensaje</button>
         </form>
         <div class="row single">
-          <button id="refreshChat" type="button">Refrescar chat</button>
+          <button id="chatAskRealtimeBtn" class="primary" type="button">Preguntar a OpenClaw (realtime)</button>
           <button id="createConversationBtn" type="button">Nueva conversacion</button>
+        </div>
+        <div class="row single">
+          <button id="refreshChat" type="button">Refrescar chat</button>
+          <button id="clearChatLiveBtn" type="button">Limpiar salida</button>
+        </div>
+        <div id="chatLiveOutput" class="conversation-note">OpenClaw en espera.</div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Canvas en vivo</h2>
+        <div class="hint">Vista visual del agente desde OpenClaw Canvas.</div>
+        <iframe
+          id="canvasFrame"
+          class="canvas-frame"
+          src="http://localhost:18789/canvas"
+          title="OpenClaw Canvas"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        ></iframe>
+        <div class="row single" style="margin-top:8px;">
+          <button id="reloadCanvasBtn" type="button">Recargar canvas</button>
+          <a class="chip" href="http://localhost:18789/canvas" target="_blank" rel="noopener noreferrer">Abrir canvas</a>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Heartbeats por proyecto</h2>
+        <div class="hint">Tareas en segundo plano activas por proyecto (ventana de 30 minutos).</div>
+        <div class="row single">
+          <button id="refreshHeartbeatsBtn" type="button">Refrescar heartbeats</button>
+          <span id="heartbeatsMeta" class="hint mono" style="margin:0;">-</span>
+        </div>
+        <div id="heartbeatsGrid" class="heartbeat-grid">
+          <div class="conversation-note">Sin datos de heartbeats.</div>
         </div>
       </article>
     </section>
@@ -366,7 +480,14 @@ function renderOperationalDashboardHtml(token: string, role: string) {
 
   <script>
     const token = ${JSON.stringify(token)};
-    const state = { projectId: "", conversationId: "", actorId: "anonymous" };
+    const runtimeRole = ${JSON.stringify(role)};
+    const state = {
+      projectId: "",
+      conversationId: "",
+      actorId: "anonymous",
+      chatBusy: false,
+      projects: []
+    };
 
     const q = (id) => document.getElementById(id);
     const esc = (v) => String(v ?? "")
@@ -412,6 +533,84 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       tbody.innerHTML = html || '<tr><td colspan="' + fallbackColspan + '">' + esc(fallbackText) + '</td></tr>';
     }
 
+    function lamp(level, label) {
+      return '<span class="lamp ' + esc(level) + '">' + esc(label) + "</span>";
+    }
+
+    function projectSkillFlags() {
+      const read = "green";
+      const write = runtimeRole === "viewer" ? "red" : "green";
+      const shell = runtimeRole === "viewer" ? "red" : "yellow";
+      return { read, write, shell };
+    }
+
+    function renderProjectAccess(projects) {
+      const tbody = q("projectAccessBody");
+      if (!tbody) {
+        return;
+      }
+
+      if (!Array.isArray(projects) || projects.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4">Sin proyectos</td></tr>';
+        return;
+      }
+
+      const flags = projectSkillFlags();
+      tbody.innerHTML = projects.map((project) =>
+        '<tr>' +
+          '<td class="mono">' + esc(project.name || project.id) + "</td>" +
+          "<td>" + lamp(flags.read, "lectura") + "</td>" +
+          "<td>" + lamp(flags.write, flags.write === "green" ? "escritura" : "bloqueado") + "</td>" +
+          "<td>" + lamp(flags.shell, flags.shell === "yellow" ? "con aprobacion" : "bloqueado") + "</td>" +
+        "</tr>"
+      ).join("");
+    }
+
+    function renderHeartbeats(payload) {
+      const grid = q("heartbeatsGrid");
+      const meta = q("heartbeatsMeta");
+      if (!grid || !meta) {
+        return;
+      }
+
+      if (!payload || !Array.isArray(payload.projects)) {
+        grid.innerHTML = '<div class="conversation-note">Sin datos de heartbeats.</div>';
+        meta.textContent = "-";
+        return;
+      }
+
+      const generated = payload.generatedAt ? new Date(payload.generatedAt).toLocaleTimeString("es-ES") : "-";
+      meta.textContent =
+        "window " + String(payload.windowMinutes || 30) + "m | bucket " + String(payload.bucketSeconds || 60) + "s | " + generated;
+
+      if (payload.projects.length === 0) {
+        grid.innerHTML = '<div class="conversation-note">Sin actividad en la ventana configurada.</div>';
+        return;
+      }
+
+      grid.innerHTML = payload.projects.map((item) => {
+        const series = Array.isArray(item.series) ? item.series : [];
+        const max = Math.max(1, ...series.map((point) => Number(point.count) || 0));
+        const bars = series.slice(-36).map((point) => {
+          const count = Number(point.count) || 0;
+          const height = Math.max(3, Math.round((count / max) * 58));
+          const title = String(point.timestamp || "") + " | " + String(count);
+          return '<span class="hb-bar" style="height:' + height + 'px" title="' + esc(title) + '"></span>';
+        }).join("");
+
+        return (
+          '<div class="heartbeat-item">' +
+            '<div class="hb-head">' +
+              '<span class="mono">' + esc(item.projectId || "sin_proyecto") + "</span>" +
+              lamp(item.active ? "green" : "red", item.active ? "activo" : "inactivo") +
+            "</div>" +
+            '<div class="hint" style="margin-bottom:6px;">heartbeats: ' + esc(item.totalHeartbeats || 0) + "</div>" +
+            '<div class="hb-bars">' + (bars || '<span class="hint">sin serie</span>') + "</div>" +
+          "</div>"
+        );
+      }).join("");
+    }
+
     function setQuickSummary(text) {
       const node = q("quickSummary");
       if (node) {
@@ -436,6 +635,71 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       const node = q("chatConversationInfo");
       if (node) {
         node.textContent = text;
+      }
+    }
+
+    function setLiveOutput(text) {
+      const node = q("chatLiveOutput");
+      if (node) {
+        node.textContent = text;
+      }
+    }
+
+    function appendLiveOutput(text) {
+      const node = q("chatLiveOutput");
+      if (!node) {
+        return;
+      }
+      node.textContent = (node.textContent || "") + text;
+    }
+
+    function setChatBusy(isBusy) {
+      state.chatBusy = Boolean(isBusy);
+      ["chatSendBtn", "chatAskRealtimeBtn", "refreshChat", "createConversationBtn"].forEach((id) => {
+        const node = q(id);
+        if (node) {
+          node.disabled = state.chatBusy;
+        }
+      });
+    }
+
+    async function parseRealtimeStream(response, onEvent) {
+      const reader = response.body && response.body.getReader ? response.body.getReader() : null;
+      if (!reader) {
+        throw new Error("No se pudo abrir stream realtime");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const result = await reader.read();
+        if (result.done) {
+          break;
+        }
+
+        buffer += decoder.decode(result.value, { stream: true });
+        let separator = buffer.indexOf("\n");
+        while (separator >= 0) {
+          const line = buffer.slice(0, separator).trim();
+          buffer = buffer.slice(separator + 1);
+          if (line) {
+            try {
+              onEvent(JSON.parse(line));
+            } catch (_error) {
+              // ignore malformed lines and continue stream parsing
+            }
+          }
+          separator = buffer.indexOf("\n");
+        }
+      }
+
+      const tail = buffer.trim();
+      if (tail) {
+        try {
+          onEvent(JSON.parse(tail));
+        } catch (_error) {
+          // ignore malformed tail
+        }
       }
     }
 
@@ -639,6 +903,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
 
     async function loadProjects() {
       const projects = await api("/v1/projects");
+      state.projects = Array.isArray(projects) ? projects : [];
       const optionsHtml = '<option value="">Selecciona proyecto</option>' +
         (projects || []).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(p.status) + ')</option>').join("");
       const select = q("activeProject");
@@ -656,6 +921,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       }
 
       syncProjectSelectors(state.projectId);
+      renderProjectAccess(state.projects);
       setConversationInfo(state.projectId ? "Conversacion: pendiente de carga" : "Conversacion: selecciona proyecto");
       return projects;
     }
@@ -894,6 +1160,143 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       }
     }
 
+    async function askOpenClawRealtime() {
+      if (state.chatBusy) {
+        return;
+      }
+
+      const projectId = activeProjectId();
+      const content = q("chatContent").value.trim();
+
+      if (!projectId) {
+        status("Selecciona proyecto antes de usar realtime.", "error");
+        return;
+      }
+
+      if (!content) {
+        status("Escribe tu mensaje para OpenClaw.", "error");
+        return;
+      }
+
+      setChatBusy(true);
+      setLiveOutput("OpenClaw escribiendo...\n");
+      status("Conectando chat realtime...", "");
+
+      try {
+        let conversationId = await ensureConversationId(projectId, false);
+        const headers = { "content-type": "application/json" };
+        if (token && token.trim()) {
+          headers.authorization = token;
+        }
+
+        let response = await fetch(
+          "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/realtime",
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              content,
+              actorType: "user",
+              actorId: state.actorId
+            }),
+            credentials: "same-origin"
+          }
+        );
+
+        if (response.status === 403) {
+          conversationId = await ensureConversationId(projectId, true);
+          response = await fetch(
+            "/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/realtime",
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                content,
+                actorType: "user",
+                actorId: state.actorId
+              }),
+              credentials: "same-origin"
+            }
+          );
+        }
+
+        if (!response.ok) {
+          const raw = await response.text();
+          let message = "fallo en chat realtime";
+          try {
+            const json = raw ? JSON.parse(raw) : null;
+            if (json && json.message) {
+              message = json.message;
+            }
+          } catch (_error) {
+            if (raw) {
+              message = raw;
+            }
+          }
+          throw new Error(message);
+        }
+
+        let hadDelta = false;
+        let hadDone = false;
+        let streamError = "";
+
+        await parseRealtimeStream(response, (event) => {
+          if (!event || typeof event !== "object") {
+            return;
+          }
+
+          if (event.type === "user_message_saved") {
+            setLiveOutput("Tu: " + content + "\n\nOpenClaw: ");
+            return;
+          }
+
+          if (event.type === "delta") {
+            hadDelta = true;
+            appendLiveOutput(String(event.delta || ""));
+            return;
+          }
+
+          if (event.type === "assistant_message_saved") {
+            if (event.provider || event.model) {
+              appendLiveOutput(
+                "\n\n[" + String(event.provider || "local") + "/" + String(event.model || "-") + "]"
+              );
+            }
+            return;
+          }
+
+          if (event.type === "error") {
+            streamError = String(event.message || "error realtime");
+            return;
+          }
+
+          if (event.type === "done") {
+            hadDone = true;
+          }
+        });
+
+        if (streamError) {
+          throw new Error(streamError);
+        }
+
+        if (!hadDelta) {
+          appendLiveOutput("\n(sin tokens de respuesta)");
+        }
+
+        if (!hadDone) {
+          appendLiveOutput("\n(stream finalizado sin evento done)");
+        }
+
+        q("chatContent").value = "";
+        status("OpenClaw respondio en realtime.", "ok");
+        await loadEvidence();
+      } catch (error) {
+        status("Error realtime: " + (error.message || "fallo"), "error");
+      } finally {
+        setChatBusy(false);
+      }
+    }
+
     async function createConversationManually() {
       const projectId = activeProjectId();
       if (!projectId) {
@@ -929,10 +1332,15 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       setTableRows("memoryBody", html, 4, "Sin memorias del proyecto");
     }
 
+    async function loadHeartbeats() {
+      const payload = await api("/v1/ops/heartbeats?windowMinutes=30&bucketSeconds=60");
+      renderHeartbeats(payload);
+    }
+
     async function loadEvidence() {
       try {
         const timelinePromise = loadTimeline();
-        await Promise.all([loadRuns(), loadMemory()]);
+        await Promise.all([loadRuns(), loadMemory(), loadHeartbeats()]);
         const timeline = await timelinePromise;
         await loadConversationMessages(timeline);
       } catch (error) {
@@ -948,9 +1356,24 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     q("taskForm").addEventListener("submit", createTask);
     q("ruleForm").addEventListener("submit", createRule);
     q("chatSendForm").addEventListener("submit", sendChatMessage);
+    q("chatAskRealtimeBtn").addEventListener("click", askOpenClawRealtime);
     q("quickRunBtn").addEventListener("click", runQuickFlow);
     q("quickOpenChatBtn").addEventListener("click", focusChatComposer);
     q("bootstrapBtn").addEventListener("click", bootstrapFlow);
+    q("reloadCanvasBtn").addEventListener("click", () => {
+      const frame = q("canvasFrame");
+      if (frame && frame.src) {
+        frame.src = frame.src;
+      }
+    });
+    q("refreshHeartbeatsBtn").addEventListener("click", async () => {
+      try {
+        await loadHeartbeats();
+        status("Heartbeats actualizados.", "ok");
+      } catch (error) {
+        status("Error heartbeats: " + (error.message || "fallo"), "error");
+      }
+    });
     q("refreshChat").addEventListener("click", async () => {
       try {
         const timeline = await loadTimeline();
@@ -961,6 +1384,9 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       }
     });
     q("createConversationBtn").addEventListener("click", createConversationManually);
+    q("clearChatLiveBtn").addEventListener("click", () => {
+      setLiveOutput("OpenClaw en espera.");
+    });
     q("refreshProjects").addEventListener("click", async () => {
       try {
         await loadProjects();

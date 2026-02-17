@@ -174,6 +174,73 @@ export class AutomationService {
     return rows.map((row) => this.mapDeadLetter(row));
   }
 
+  projectHeartbeats(options: { windowMinutes?: number; bucketSeconds?: number } = {}) {
+    const windowMinutes = Math.max(5, Math.min(240, Math.floor(options.windowMinutes ?? 30)));
+    const bucketSeconds = Math.max(10, Math.min(300, Math.floor(options.bucketSeconds ?? 60)));
+    const bucketMs = bucketSeconds * 1000;
+    const nowMs = Date.now();
+    const fromIso = new Date(nowMs - windowMinutes * 60_000).toISOString();
+
+    const rows = this.connection
+      .prepare(
+        `SELECT id, rule_id, event_key, correlation_id, status, output, attempts, started_at, finished_at
+         FROM run_logs
+         WHERE started_at >= ?
+         ORDER BY started_at ASC`
+      )
+      .all(fromIso) as RunLogRow[];
+
+    const projectSeries = new Map<string, Map<number, number>>();
+    for (const row of rows) {
+      const startedAtMs = new Date(row.started_at).getTime();
+      if (Number.isNaN(startedAtMs)) {
+        continue;
+      }
+
+      const projectId = this.extractProjectIdFromEventKey(row.event_key) ?? "sin_proyecto";
+      const bucket = Math.floor(startedAtMs / bucketMs) * bucketMs;
+      const buckets = projectSeries.get(projectId) ?? new Map<number, number>();
+      buckets.set(bucket, (buckets.get(bucket) ?? 0) + 1);
+      projectSeries.set(projectId, buckets);
+    }
+
+    const activeCutoff = nowMs - bucketMs * 2;
+    const projects = Array.from(projectSeries.entries())
+      .map(([projectId, buckets]) => {
+        const series = Array.from(buckets.entries())
+          .map(([timestampMs, count]) => ({
+            timestamp: new Date(timestampMs).toISOString(),
+            count
+          }))
+          .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+
+        const total = series.reduce((acc, item) => acc + item.count, 0);
+        const last = series.length > 0 ? series[series.length - 1] : undefined;
+        const lastAtMs = last ? new Date(last.timestamp).getTime() : 0;
+
+        return {
+          projectId,
+          totalHeartbeats: total,
+          active: lastAtMs >= activeCutoff,
+          lastHeartbeatAt: last?.timestamp ?? null,
+          series
+        };
+      })
+      .sort((a, b) => {
+        if (a.active !== b.active) {
+          return a.active ? -1 : 1;
+        }
+        return b.totalHeartbeats - a.totalHeartbeats;
+      });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      windowMinutes,
+      bucketSeconds,
+      projects
+    };
+  }
+
   healthSummary(options: { from?: string; to?: string } = {}) {
     const rows = this.connection
       .prepare(
@@ -671,5 +738,17 @@ export class AutomationService {
       return value;
     }
     return undefined;
+  }
+
+  private extractProjectIdFromEventKey(eventKey: string) {
+    if (!eventKey) {
+      return undefined;
+    }
+    const parts = eventKey.split(":");
+    const project = parts[2];
+    if (!project || project.length === 0) {
+      return undefined;
+    }
+    return project;
   }
 }
