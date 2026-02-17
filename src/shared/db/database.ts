@@ -219,6 +219,9 @@ function migrate(connection: Database.Database) {
   ensureColumn(connection, "automation_rules", "trigger_mode", "TEXT");
   ensureColumn(connection, "automation_rules", "trigger_conditions_json", "TEXT");
   ensureColumn(connection, "automation_rules", "trigger_cron", "TEXT");
+  ensureColumn(connection, "conversations", "project_id", "TEXT");
+  ensureColumn(connection, "tasks", "project_id", "TEXT");
+  ensureColumn(connection, "milestones", "project_id", "TEXT");
   ensureColumn(connection, "run_logs", "correlation_id", "TEXT");
   ensureColumn(connection, "memory_items", "project_id", "TEXT");
   ensureColumn(connection, "memory_items", "agent_id", "TEXT");
@@ -245,6 +248,7 @@ function migrate(connection: Database.Database) {
   ensureIndex(connection, "idx_memory_type", "memory_items", "memory_type");
   ensureIndex(connection, "idx_memory_archived", "memory_items", "archived");
   ensureIndex(connection, "idx_memory_expires", "memory_items", "expires_at");
+  ensureIndex(connection, "idx_conversations_project", "conversations", "project_id");
   ensureIndex(connection, "idx_rate_limit_updated", "rate_limit_buckets", "updated_at");
 }
 
@@ -292,6 +296,10 @@ function ensureColumn(
   columnName: string,
   sqlType: string
 ) {
+  if (!tableExists(connection, tableName)) {
+    return;
+  }
+
   const rows = connection
     .prepare(`PRAGMA table_info(${tableName})`)
     .all() as Array<{ name: string }>;
@@ -309,5 +317,22 @@ function ensureIndex(
   tableName: string,
   columnName: string
 ) {
+  if (!tableExists(connection, tableName)) {
+    return;
+  }
+
   connection.exec(`CREATE INDEX IF NOT EXISTS ${indexName} ON ${tableName}(${columnName})`);
+}
+
+function tableExists(connection: Database.Database, tableName: string) {
+  const row = connection
+    .prepare(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'table' AND name = ?
+       LIMIT 1`
+    )
+    .get(tableName) as { name: string } | undefined;
+
+  return Boolean(row);
 }
