@@ -3,6 +3,8 @@ import { z } from "zod";
 import { AutomationService } from "../automation/automation.service";
 import { MemoryService } from "../memory/memory.service";
 import { AuditService } from "../policy/audit.service";
+import { can } from "../policy/rbac";
+import { ProjectService } from "../project/project.service";
 import { MetricsService } from "./metrics.service";
 import { requirePermission } from "../policy/middleware";
 import { asyncHandler } from "../shared/http/async-handler";
@@ -29,7 +31,8 @@ export function createOpsRouter(
   memoryService: MemoryService,
   automationService: AutomationService,
   auditService: AuditService,
-  rateLimiter: RateLimiter
+  rateLimiter: RateLimiter,
+  projectService: ProjectService
 ) {
   const router = Router();
 
@@ -113,6 +116,35 @@ export function createOpsRouter(
       res.status(200).json(
         automationService.projectHeartbeats(options)
       );
+    })
+  );
+
+  router.get(
+    "/projects/access",
+    requirePermission("read", "proyecto"),
+    asyncHandler(async (req, res) => {
+      const projects =
+        req.role === "admin" || req.role === "manager"
+          ? projectService.listProjects()
+          : projectService.listProjectsForActor(req.actorId, req.role);
+
+      const items = projects.map((project) => {
+        const projectAccess = projectService.canActorAccessProject(project.id, req.actorId, req.role);
+        const read = projectAccess && can("read", "proyecto", req.role);
+        const write = projectAccess && can("update", "proyecto", req.role);
+        const execute = projectAccess && can("execute", "automatizacion", req.role);
+
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          read,
+          write,
+          shell: execute,
+          shellApprovalRequired: execute
+        };
+      });
+
+      res.status(200).json(items);
     })
   );
 

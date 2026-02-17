@@ -81,5 +81,19 @@ describe("Day 5 panel usability", () => {
       .send({ enabled: true });
     expect(enable.status).toBe(200);
     expect(enable.body.enabled).toBe(true);
+
+    const access = await request(app)
+      .get("/v1/ops/projects/access")
+      .set(auth);
+    expect(access.status).toBe(200);
+    expect(Array.isArray(access.body)).toBe(true);
+    expect(access.body.some((item: { projectId?: string }) => item.projectId === project.body.id)).toBe(true);
+
+    const heartbeats = await request(app)
+      .get("/v1/ops/heartbeats")
+      .query({ windowMinutes: 30, bucketSeconds: 60 })
+      .set(auth);
+    expect(heartbeats.status).toBe(200);
+    expect(Array.isArray(heartbeats.body.projects)).toBe(true);
   });
 });

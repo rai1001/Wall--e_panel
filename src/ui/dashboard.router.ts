@@ -486,7 +486,8 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       conversationId: "",
       actorId: "anonymous",
       chatBusy: false,
-      projects: []
+      projects: [],
+      projectAccess: []
     };
 
     const q = (id) => document.getElementById(id);
@@ -537,31 +538,28 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       return '<span class="lamp ' + esc(level) + '">' + esc(label) + "</span>";
     }
 
-    function projectSkillFlags() {
-      const read = "green";
-      const write = runtimeRole === "viewer" ? "red" : "green";
-      const shell = runtimeRole === "viewer" ? "red" : "yellow";
-      return { read, write, shell };
-    }
-
-    function renderProjectAccess(projects) {
+    function renderProjectAccess(items) {
       const tbody = q("projectAccessBody");
       if (!tbody) {
         return;
       }
 
-      if (!Array.isArray(projects) || projects.length === 0) {
+      if (!Array.isArray(items) || items.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4">Sin proyectos</td></tr>';
         return;
       }
 
-      const flags = projectSkillFlags();
-      tbody.innerHTML = projects.map((project) =>
+      tbody.innerHTML = items.map((item) =>
         '<tr>' +
-          '<td class="mono">' + esc(project.name || project.id) + "</td>" +
-          "<td>" + lamp(flags.read, "lectura") + "</td>" +
-          "<td>" + lamp(flags.write, flags.write === "green" ? "escritura" : "bloqueado") + "</td>" +
-          "<td>" + lamp(flags.shell, flags.shell === "yellow" ? "con aprobacion" : "bloqueado") + "</td>" +
+          '<td class="mono">' + esc(item.projectName || item.projectId) + "</td>" +
+          "<td>" + lamp(item.read ? "green" : "red", item.read ? "lectura" : "sin acceso") + "</td>" +
+          "<td>" + lamp(item.write ? "green" : "red", item.write ? "escritura" : "sin acceso") + "</td>" +
+          "<td>" +
+            lamp(
+              item.shell ? (item.shellApprovalRequired ? "yellow" : "green") : "red",
+              item.shell ? (item.shellApprovalRequired ? "con aprobacion" : "permitido") : "sin acceso"
+            ) +
+          "</td>" +
         "</tr>"
       ).join("");
     }
@@ -904,6 +902,19 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     async function loadProjects() {
       const projects = await api("/v1/projects");
       state.projects = Array.isArray(projects) ? projects : [];
+      try {
+        const access = await api("/v1/ops/projects/access");
+        state.projectAccess = Array.isArray(access) ? access : [];
+      } catch (_error) {
+        state.projectAccess = (state.projects || []).map((project) => ({
+          projectId: project.id,
+          projectName: project.name,
+          read: true,
+          write: runtimeRole !== "viewer",
+          shell: runtimeRole !== "viewer",
+          shellApprovalRequired: runtimeRole !== "viewer"
+        }));
+      }
       const optionsHtml = '<option value="">Selecciona proyecto</option>' +
         (projects || []).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(p.status) + ')</option>').join("");
       const select = q("activeProject");
@@ -921,7 +932,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       }
 
       syncProjectSelectors(state.projectId);
-      renderProjectAccess(state.projects);
+      renderProjectAccess(state.projectAccess);
       setConversationInfo(state.projectId ? "Conversacion: pendiente de carga" : "Conversacion: selecciona proyecto");
       return projects;
     }
