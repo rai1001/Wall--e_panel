@@ -6,6 +6,7 @@ import { AuditService } from "../policy/audit.service";
 import { MetricsService } from "./metrics.service";
 import { requirePermission } from "../policy/middleware";
 import { asyncHandler } from "../shared/http/async-handler";
+import { RateLimiter } from "../shared/http/rate-limit";
 import { validateQuery } from "../shared/http/validation";
 
 const rangeQuerySchema = z.object({
@@ -14,11 +15,16 @@ const rangeQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(500).optional()
 });
 
+const rateLimitQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(50).optional()
+});
+
 export function createOpsRouter(
   metricsService: MetricsService,
   memoryService: MemoryService,
   automationService: AutomationService,
-  auditService: AuditService
+  auditService: AuditService,
+  rateLimiter: RateLimiter
 ) {
   const router = Router();
 
@@ -35,6 +41,14 @@ export function createOpsRouter(
     requirePermission("read", "memoria"),
     asyncHandler(async (_req, res) => {
       res.status(200).json(memoryService.getMetrics());
+    })
+  );
+
+  router.get(
+    "/embedding/runtime",
+    requirePermission("read", "memoria"),
+    asyncHandler(async (_req, res) => {
+      res.status(200).json(memoryService.getEmbeddingRuntime());
     })
   );
 
@@ -65,6 +79,16 @@ export function createOpsRouter(
       res.status(200).json(
         auditService.aggregateByActorAndAction(options)
       );
+    })
+  );
+
+  router.get(
+    "/rate-limit/health",
+    requirePermission("read", "automatizacion"),
+    validateQuery(rateLimitQuerySchema),
+    asyncHandler(async (req, res) => {
+      const limit = req.query.limit ? Number(req.query.limit) : 10;
+      res.status(200).json(rateLimiter.health(limit));
     })
   );
 

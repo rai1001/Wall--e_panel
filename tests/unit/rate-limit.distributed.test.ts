@@ -29,4 +29,27 @@ describe("RateLimiter distributed backend", () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("reports health with blocked keys and active buckets", () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "wall-e-rate-limit-health-"));
+    const dbPath = path.join(tempDir, "assistant.db");
+    const client = createDatabaseClient(dbPath);
+
+    try {
+      const limiter = new RateLimiter({ backend: "db", connection: client.connection, cleanupEvery: 10_000 });
+
+      limiter.consume("auth:user_manager", 1, 60_000);
+      limiter.consume("auth:user_manager", 1, 60_000);
+
+      const health = limiter.health(5);
+      expect(health.backend).toBe("db");
+      expect(health.activeBuckets).toBeGreaterThanOrEqual(1);
+      expect(health.totalBlocks).toBeGreaterThanOrEqual(1);
+      expect(health.topBlockedKeys.length).toBeGreaterThanOrEqual(1);
+      expect(health.averageWindowMs).toBeGreaterThanOrEqual(1);
+    } finally {
+      client.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

@@ -68,6 +68,27 @@ export interface MemoryMetrics {
   temporaryActive: number;
   archived: number;
   vectorIndexed: number;
+  embeddingRuntime: {
+    provider: string;
+    model: string;
+    version: string;
+    dimension: number;
+  };
+  embeddingDrift: {
+    activeVersionCount: number;
+    oldVersionCount: number;
+    noEmbeddingCount: number;
+    indexedCount: number;
+    oldVersionPct: number;
+    activeVersionPct: number;
+    noEmbeddingPct: number;
+  };
+  embeddingDistribution: Array<{
+    provider: string;
+    model: string;
+    version: string;
+    count: number;
+  }>;
 }
 
 interface MemoryRow {
@@ -290,7 +311,6 @@ export class MemoryService {
         if (
           existing &&
           existing.content_hash === hash &&
-          existing.embedding_dim === embeddingDimension() &&
           (existing.embedding_version ?? null) === embeddingVersion() &&
           (existing.embedding_provider ?? null) === embeddingProvider() &&
           (existing.embedding_model ?? null) === embeddingModel()
@@ -419,6 +439,15 @@ export class MemoryService {
     return this.getById(memoryId);
   }
 
+  getEmbeddingRuntime() {
+    return {
+      provider: embeddingProvider(),
+      model: embeddingModel(),
+      version: embeddingVersion(),
+      dimension: embeddingDimension()
+    };
+  }
+
   getMetrics(): MemoryMetrics {
     const total = (this.connection
       .prepare(
@@ -503,6 +532,57 @@ export class MemoryService {
       )
       .get() as { count: number }).count;
 
+    const embeddingRuntime = this.getEmbeddingRuntime();
+
+    const indexedActive = (this.connection
+      .prepare(
+        `SELECT COUNT(1) as count
+         FROM memory_items m
+         INNER JOIN memory_embeddings e
+           ON e.memory_id = m.id
+         WHERE m.archived = 0`
+      )
+      .get() as { count: number }).count;
+
+    const activeVersionCount = (this.connection
+      .prepare(
+        `SELECT COUNT(1) as count
+         FROM memory_items m
+         INNER JOIN memory_embeddings e
+           ON e.memory_id = m.id
+         WHERE m.archived = 0
+           AND e.embedding_provider = ?
+           AND e.embedding_model = ?
+           AND e.embedding_version = ?`
+      )
+      .get(embeddingRuntime.provider, embeddingRuntime.model, embeddingRuntime.version) as {
+      count: number;
+    }).count;
+
+    const oldVersionCount = Math.max(0, indexedActive - activeVersionCount);
+    const noEmbeddingCount = Math.max(0, total - indexedActive);
+
+    const embeddingDistribution = this.connection
+      .prepare(
+        `SELECT
+           COALESCE(embedding_provider, 'unknown') as provider,
+           COALESCE(embedding_model, 'unknown') as model,
+           COALESCE(embedding_version, 'unknown') as version,
+           COUNT(1) as count
+         FROM memory_embeddings
+         GROUP BY embedding_provider, embedding_model, embedding_version
+         ORDER BY count DESC
+         LIMIT 12`
+      )
+      .all() as Array<{
+      provider: string;
+      model: string;
+      version: string;
+      count: number;
+    }>;
+
+    const denom = total > 0 ? total : 1;
+
     return {
       total,
       byScope,
@@ -512,7 +592,23 @@ export class MemoryService {
       blocked,
       temporaryActive,
       archived,
-      vectorIndexed
+      vectorIndexed,
+      embeddingRuntime,
+      embeddingDrift: {
+        activeVersionCount,
+        oldVersionCount,
+        noEmbeddingCount,
+        indexedCount: indexedActive,
+        activeVersionPct: Number(((activeVersionCount / denom) * 100).toFixed(2)),
+        oldVersionPct: Number(((oldVersionCount / denom) * 100).toFixed(2)),
+        noEmbeddingPct: Number(((noEmbeddingCount / denom) * 100).toFixed(2))
+      },
+      embeddingDistribution: embeddingDistribution.map((item) => ({
+        provider: item.provider,
+        model: item.model,
+        version: item.version,
+        count: item.count
+      }))
     };
   }
 

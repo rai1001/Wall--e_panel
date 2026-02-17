@@ -2,6 +2,7 @@ const EMBEDDING_DIM = 384;
 const EMBEDDING_VERSION = "semantic-hash-v2";
 const EMBEDDING_PROVIDER = "local";
 const EMBEDDING_MODEL = "semantic-hash-v2";
+const GOOGLE_EMBEDDING_DEFAULT_MODEL = "text-embedding-004";
 
 const STOP_WORDS = new Set([
   "a",
@@ -257,27 +258,31 @@ export function createEmbedding(text: string) {
 
 export async function createEmbeddingAsync(text: string) {
   const provider = (process.env.EMBEDDING_PROVIDER ?? "local").toLowerCase();
-  if (provider !== "openai") {
+  if (provider !== "google") {
     return createEmbedding(text);
   }
 
-  const key = process.env.OPENAI_API_KEY;
+  const key = process.env.GOOGLE_API_KEY;
   if (!key) {
     return createEmbedding(text);
   }
 
-  const model = process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
+  const model = process.env.GOOGLE_EMBEDDING_MODEL ?? GOOGLE_EMBEDDING_DEFAULT_MODEL;
+  const encodedModel = encodeURIComponent(model);
+  const encodedKey = encodeURIComponent(key);
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodedModel}:embedContent?key=${encodedKey}`;
 
   try {
-    const response = await fetch("https://api.openai.com/v1/embeddings", {
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${key}`
+        "content-type": "application/json"
       },
       body: JSON.stringify({
-        model,
-        input: text
+        content: {
+          parts: [{ text }]
+        },
+        taskType: "RETRIEVAL_DOCUMENT"
       })
     });
 
@@ -286,9 +291,11 @@ export async function createEmbeddingAsync(text: string) {
     }
 
     const payload = (await response.json()) as {
-      data?: Array<{ embedding?: number[] }>;
+      embedding?: {
+        values?: number[];
+      };
     };
-    const embedding = payload.data?.[0]?.embedding;
+    const embedding = payload.embedding?.values;
     if (!Array.isArray(embedding) || embedding.length === 0) {
       return createEmbedding(text);
     }
@@ -301,12 +308,12 @@ export async function createEmbeddingAsync(text: string) {
 
 export function embeddingMetadata() {
   const provider = (process.env.EMBEDDING_PROVIDER ?? "local").toLowerCase();
-  if (provider === "openai" && process.env.OPENAI_API_KEY) {
+  if (provider === "google" && process.env.GOOGLE_API_KEY) {
     return {
-      provider: "openai",
-      model: process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small",
-      version: "openai-compatible",
-      dimension: 1536
+      provider: "google",
+      model: process.env.GOOGLE_EMBEDDING_MODEL ?? GOOGLE_EMBEDDING_DEFAULT_MODEL,
+      version: "google-compatible-v1",
+      dimension: 768
     };
   }
 

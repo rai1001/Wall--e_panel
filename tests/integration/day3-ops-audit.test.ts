@@ -41,6 +41,15 @@ describe("Day 3 ops endpoints", () => {
     const memoryMetrics = await request(app).get("/v1/ops/memory/metrics").set(managerAuth);
     expect(memoryMetrics.status).toBe(200);
     expect(memoryMetrics.body.total).toBeGreaterThanOrEqual(1);
+    expect(memoryMetrics.body.embeddingRuntime?.provider).toBeTruthy();
+    expect(memoryMetrics.body.embeddingRuntime?.version).toBeTruthy();
+    expect(memoryMetrics.body.embeddingDrift?.activeVersionPct).toBeGreaterThanOrEqual(0);
+
+    const embeddingRuntime = await request(app).get("/v1/ops/embedding/runtime").set(managerAuth);
+    expect(embeddingRuntime.status).toBe(200);
+    expect(embeddingRuntime.body.provider).toBeTruthy();
+    expect(embeddingRuntime.body.model).toBeTruthy();
+    expect(embeddingRuntime.body.version).toBeTruthy();
 
     const automationHealth = await request(app)
       .get("/v1/ops/automation/health")
@@ -54,5 +63,13 @@ describe("Day 3 ops endpoints", () => {
     expect(auditAggregated.status).toBe(200);
     expect(Array.isArray(auditAggregated.body)).toBe(true);
     expect(auditAggregated.body.length).toBeGreaterThanOrEqual(1);
+
+    const rateLimitHealth = await request(app)
+      .get("/v1/ops/rate-limit/health?limit=5")
+      .set(managerAuth);
+    expect(rateLimitHealth.status).toBe(200);
+    expect(rateLimitHealth.body.backend).toBeTruthy();
+    expect(rateLimitHealth.body.activeBuckets).toBeGreaterThanOrEqual(0);
+    expect(Array.isArray(rateLimitHealth.body.topBlockedKeys)).toBe(true);
   });
 });

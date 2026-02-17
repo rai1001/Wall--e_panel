@@ -197,8 +197,13 @@ function migrate(connection: Database.Database) {
     CREATE TABLE IF NOT EXISTS rate_limit_buckets (
       bucket_key TEXT NOT NULL,
       window_start INTEGER NOT NULL,
+      window_ms INTEGER NOT NULL DEFAULT 60000,
+      max_limit INTEGER NOT NULL DEFAULT 60,
       count INTEGER NOT NULL,
+      blocked_count INTEGER NOT NULL DEFAULT 0,
+      first_seen INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL,
+      last_blocked_at INTEGER,
       PRIMARY KEY (bucket_key, window_start)
     );
 
@@ -229,6 +234,11 @@ function migrate(connection: Database.Database) {
   ensureColumn(connection, "memory_embeddings", "embedding_provider", "TEXT");
   ensureColumn(connection, "memory_embeddings", "embedding_model", "TEXT");
   ensureColumn(connection, "memory_embeddings", "embedding_version", "TEXT");
+  ensureColumn(connection, "rate_limit_buckets", "window_ms", "INTEGER NOT NULL DEFAULT 60000");
+  ensureColumn(connection, "rate_limit_buckets", "max_limit", "INTEGER NOT NULL DEFAULT 60");
+  ensureColumn(connection, "rate_limit_buckets", "blocked_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(connection, "rate_limit_buckets", "first_seen", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(connection, "rate_limit_buckets", "last_blocked_at", "INTEGER");
 
   ensureIndex(connection, "idx_memory_project", "memory_items", "project_id");
   ensureIndex(connection, "idx_memory_agent", "memory_items", "agent_id");

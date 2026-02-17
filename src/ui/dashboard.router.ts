@@ -50,7 +50,7 @@ function renderDashboardHtml(token: string, role: string) {
       backdrop-filter: blur(4px);
     }
     .card h2 { margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; letter-spacing: .09em; }
-    .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .stats { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
     .stat { border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
     .stat .k { font-size: 11px; color: var(--muted); text-transform: uppercase; font-family: "IBM Plex Mono", monospace; }
     .stat .v { font-size: 23px; font-weight: 700; margin-top: 4px; }
@@ -102,7 +102,22 @@ function renderDashboardHtml(token: string, role: string) {
           <div class="stat"><div class="k">Err</div><div class="v" id="requestsErr">-</div></div>
           <div class="stat"><div class="k">Memories</div><div class="v" id="memoryTotal">-</div></div>
           <div class="stat"><div class="k">Retries</div><div class="v" id="automationRetries">-</div></div>
+          <div class="stat"><div class="k">Emb v</div><div class="v" id="embeddingOldPct">-</div></div>
+          <div class="stat"><div class="k">RL Buckets</div><div class="v" id="rateLimitBuckets">-</div></div>
         </div>
+        <div style="margin-top:8px; font-size:11px; color:var(--muted);" class="mono" id="runtimePin">runtime: -</div>
+      </section>
+      <section class="card">
+        <h2>Rate Limit Health</h2>
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <span class="pill">backend <span id="rlBackend">-</span></span>
+          <span class="pill">avg window <span id="rlWindow">-</span></span>
+          <span class="pill">evictions <span id="rlEvictions">-</span></span>
+        </div>
+        <table>
+          <thead><tr><th>Key</th><th>Blocked</th></tr></thead>
+          <tbody id="rlTopBody"></tbody>
+        </table>
       </section>
       <section class="card">
         <h2>Aprobaciones + Runs</h2>
@@ -195,17 +210,32 @@ function renderDashboardHtml(token: string, role: string) {
     }
 
     async function load() {
-      const [metrics, memoryMetrics, approvals, runs] = await Promise.all([
+      const [metrics, memoryMetrics, approvals, runs, rateLimitHealth] = await Promise.all([
         fetchJson('/v1/ops/metrics'),
         fetchJson('/v1/ops/memory/metrics'),
         fetchJson('/v1/policy/approvals?status=pending'),
-        fetchJson('/v1/automation/runs')
+        fetchJson('/v1/automation/runs'),
+        fetchJson('/v1/ops/rate-limit/health?limit=6')
       ]);
 
       q('requestsTotal').textContent = metrics.requests.total;
       q('requestsErr').textContent = metrics.requests.errors;
       q('memoryTotal').textContent = memoryMetrics.total;
       q('automationRetries').textContent = metrics.automation.retries;
+      q('embeddingOldPct').textContent = (memoryMetrics.embeddingDrift?.oldVersionPct || 0) + '%';
+      q('rateLimitBuckets').textContent = rateLimitHealth.activeBuckets;
+      q('runtimePin').textContent =
+        'runtime: ' +
+        (memoryMetrics.embeddingRuntime?.provider || '-') + '/' +
+        (memoryMetrics.embeddingRuntime?.model || '-') + '/' +
+        (memoryMetrics.embeddingRuntime?.version || '-');
+      q('rlBackend').textContent = rateLimitHealth.backend;
+      q('rlWindow').textContent = String(rateLimitHealth.averageWindowMs || 0) + 'ms';
+      q('rlEvictions').textContent = String(rateLimitHealth.evictions || 0);
+
+      q('rlTopBody').innerHTML = (rateLimitHealth.topBlockedKeys || []).map(item => (
+        '<tr><td class=\"mono\">' + item.key + '</td><td>' + item.blockedCount + '</td></tr>'
+      )).join('') || '<tr><td colspan=\"2\">Sin bloqueos</td></tr>';
 
       q('approvalsBody').innerHTML = approvals.map(item => (
         '<tr>' +

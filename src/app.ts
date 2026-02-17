@@ -62,7 +62,8 @@ function mountDomainRouters(router: express.Router, context: AppContext) {
       context.metricsService,
       context.memoryService,
       context.automationService,
-      context.auditService
+      context.auditService,
+      context.rateLimiter
     )
   );
   router.use(
