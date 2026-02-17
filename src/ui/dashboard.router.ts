@@ -78,6 +78,49 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     }
     .status.ok { border-color: #1f785f; color: #7de4bf; }
     .status.error { border-color: #893939; color: #ffb3b3; }
+    .spotlight {
+      border-color: #3b4f77;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(249, 190, 79, 0.12), transparent 45%),
+        linear-gradient(165deg, rgba(22, 35, 59, 0.95), rgba(15, 25, 44, 0.95));
+    }
+    .spotline {
+      color: #f7d180;
+      font-weight: 700;
+      letter-spacing: .02em;
+      font-size: 12px;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .quick-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .quick-actions {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .checkline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .quick-summary {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.02);
+      min-height: 42px;
+    }
     .grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(280px, 1fr));
@@ -147,6 +190,8 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       background: rgba(255, 255, 255, 0.02);
     }
     @media (max-width: 900px) {
+      .quick-grid { grid-template-columns: 1fr; }
+      .quick-actions { grid-template-columns: 1fr; }
       .grid { grid-template-columns: 1fr; }
       .row { grid-template-columns: 1fr; }
       .row.single { grid-template-columns: 1fr; }
@@ -170,6 +215,41 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     </section>
 
     <div id="status" class="status">Listo para operar.</div>
+
+    <section class="card spotlight">
+      <div class="spotline">Modo rapido diario</div>
+      <h2>1 boton para lanzar flujo: proyecto -> tarea -> automatizacion -> chat -> memoria</h2>
+      <div class="hint">Si no eliges proyecto existente, se crea uno nuevo. Luego se crea la tarea y se actualiza evidencia.</div>
+      <div class="quick-grid">
+        <div>
+          <label class="hint" for="quickProject">Proyecto existente</label>
+          <select id="quickProject">
+            <option value="">(opcional) usar proyecto activo</option>
+          </select>
+        </div>
+        <div>
+          <label class="hint" for="quickProjectName">Nuevo proyecto (opcional)</label>
+          <input id="quickProjectName" placeholder="Ej: Lanzamiento semanal Rai" />
+        </div>
+        <div>
+          <label class="hint" for="quickTaskTitle">Tarea a lanzar (obligatorio)</label>
+          <input id="quickTaskTitle" placeholder="Ej: Preparar propuesta final" required minlength="3" />
+        </div>
+        <div>
+          <label class="hint" for="quickRuleMessage">Mensaje auto en chat (opcional)</label>
+          <input id="quickRuleMessage" placeholder="Ej: Tarea registrada y en ejecucion" />
+        </div>
+      </div>
+      <div class="quick-actions">
+        <label class="checkline">
+          <input id="quickEnsureRule" type="checkbox" checked />
+          Asegurar regla base task_created -> chat + memory
+        </label>
+        <button id="quickRunBtn" class="primary" type="button">Crear y lanzar</button>
+        <button id="quickOpenChatBtn" type="button">Ir a chat</button>
+      </div>
+      <div id="quickSummary" class="quick-summary mono">Sin ejecucion aun.</div>
+    </section>
 
     <section class="grid">
       <article class="card">
@@ -229,7 +309,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
         </div>
       </article>
 
-      <article class="card">
+      <article class="card" id="chatCard">
         <h2>Paso 5. Chat operativo</h2>
         <div class="hint">Envio manual de mensajes. Si no existe conversacion para el proyecto, se crea al enviar.</div>
         <div id="chatConversationInfo" class="conversation-note mono">Conversacion: selecciona proyecto</div>
@@ -332,6 +412,22 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       tbody.innerHTML = html || '<tr><td colspan="' + fallbackColspan + '">' + esc(fallbackText) + '</td></tr>';
     }
 
+    function setQuickSummary(text) {
+      const node = q("quickSummary");
+      if (node) {
+        node.textContent = text;
+      }
+    }
+
+    function syncProjectSelectors(projectId) {
+      if (q("activeProject")) {
+        q("activeProject").value = projectId || "";
+      }
+      if (q("quickProject")) {
+        q("quickProject").value = projectId || "";
+      }
+    }
+
     function activeProjectId() {
       return q("activeProject").value || state.projectId;
     }
@@ -418,19 +514,148 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       return state.conversationId;
     }
 
+    function hasBaselineAutomationRule(rule) {
+      if (!rule || !rule.trigger || rule.trigger.type !== "task_created") {
+        return false;
+      }
+
+      const actionTypes = Array.isArray(rule.actions)
+        ? rule.actions.map((action) => String(action.type || ""))
+        : [];
+      return actionTypes.includes("post_chat_message") && actionTypes.includes("save_memory");
+    }
+
+    async function ensureBaselineAutomationRule(message) {
+      const rules = await api("/v1/automation/rules");
+      const found = Array.isArray(rules)
+        ? rules.find((rule) => hasBaselineAutomationRule(rule))
+        : null;
+
+      if (found) {
+        if (!found.enabled) {
+          await api("/v1/automation/rules/" + encodeURIComponent(found.id) + "/status", {
+            method: "PATCH",
+            body: JSON.stringify({ enabled: true })
+          });
+        }
+        return found.id;
+      }
+
+      const messagePayload = message ? { content: message } : {};
+      const created = await api("/v1/automation/rules", {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Regla base diaria task_created",
+          trigger: { type: "task_created" },
+          actions: [
+            { type: "post_chat_message", payload: messagePayload },
+            { type: "save_memory", payload: { scope: "proyecto", source: "workboard:quick-flow" } }
+          ],
+          enabled: true
+        })
+      });
+
+      return created.id;
+    }
+
+    async function runQuickFlow() {
+      const selectedProjectId = q("quickProject").value || activeProjectId();
+      const newProjectName = q("quickProjectName").value.trim();
+      const taskTitle = q("quickTaskTitle").value.trim();
+      const message = q("quickRuleMessage").value.trim();
+      const ensureRule = q("quickEnsureRule").checked;
+
+      if (!taskTitle) {
+        status("Escribe una tarea en Modo rapido.", "error");
+        return;
+      }
+
+      let projectId = selectedProjectId;
+      status("Ejecutando flujo rapido...", "");
+      setQuickSummary("Procesando...");
+
+      try {
+        if (!projectId) {
+          if (!newProjectName) {
+            status("Selecciona proyecto o escribe nombre de proyecto nuevo.", "error");
+            setQuickSummary("Fallo: falta proyecto.");
+            return;
+          }
+
+          const project = await api("/v1/projects", {
+            method: "POST",
+            body: JSON.stringify({ name: newProjectName, status: "active" })
+          });
+          projectId = String(project.id);
+          state.projectId = projectId;
+          state.conversationId = "";
+          await loadProjects();
+          syncProjectSelectors(projectId);
+        } else {
+          state.projectId = projectId;
+          syncProjectSelectors(projectId);
+        }
+
+        let ruleId = "sin-cambios";
+        if (ensureRule) {
+          ruleId = await ensureBaselineAutomationRule(message);
+        }
+
+        const conversationId = await ensureConversationId(projectId, false);
+        const task = await api("/v1/projects/" + encodeURIComponent(projectId) + "/tasks", {
+          method: "POST",
+          body: JSON.stringify({ title: taskTitle, status: "todo" })
+        });
+
+        q("quickTaskTitle").value = "";
+        if (!selectedProjectId) {
+          q("quickProjectName").value = "";
+        }
+
+        setQuickSummary(
+          "OK | proyecto: " + projectId +
+          " | tarea: " + task.id +
+          " | conversacion: " + conversationId +
+          " | regla: " + ruleId
+        );
+        status("Flujo lanzado: tarea creada y evidencias actualizadas.", "ok");
+        await loadEvidence();
+      } catch (error) {
+        setQuickSummary("Fallo: " + (error.message || "error inesperado"));
+        status("Error en flujo rapido: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    function focusChatComposer() {
+      const chatCard = q("chatCard");
+      if (chatCard && typeof chatCard.scrollIntoView === "function") {
+        chatCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      const input = q("chatContent");
+      if (input && typeof input.focus === "function") {
+        input.focus();
+      }
+    }
+
     async function loadProjects() {
       const projects = await api("/v1/projects");
-      const select = q("activeProject");
-      select.innerHTML = '<option value="">Selecciona proyecto</option>' +
+      const optionsHtml = '<option value="">Selecciona proyecto</option>' +
         (projects || []).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(p.status) + ')</option>').join("");
+      const select = q("activeProject");
+      const quickSelect = q("quickProject");
+      select.innerHTML = optionsHtml;
+      if (quickSelect) {
+        quickSelect.innerHTML = '<option value="">(opcional) usar proyecto activo</option>' +
+          (projects || []).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(p.status) + ')</option>').join("");
+      }
 
       if (!state.projectId && projects && projects.length > 0) {
         state.projectId = String(projects[0].id);
-        select.value = state.projectId;
       } else if (state.projectId) {
-        select.value = state.projectId;
+        state.projectId = String(state.projectId);
       }
 
+      syncProjectSelectors(state.projectId);
       setConversationInfo(state.projectId ? "Conversacion: pendiente de carga" : "Conversacion: selecciona proyecto");
       return projects;
     }
@@ -723,6 +948,8 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     q("taskForm").addEventListener("submit", createTask);
     q("ruleForm").addEventListener("submit", createRule);
     q("chatSendForm").addEventListener("submit", sendChatMessage);
+    q("quickRunBtn").addEventListener("click", runQuickFlow);
+    q("quickOpenChatBtn").addEventListener("click", focusChatComposer);
     q("bootstrapBtn").addEventListener("click", bootstrapFlow);
     q("refreshChat").addEventListener("click", async () => {
       try {
@@ -747,7 +974,20 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       if (!(target instanceof HTMLSelectElement)) return;
       state.projectId = target.value || "";
       state.conversationId = "";
+      syncProjectSelectors(state.projectId);
       loadEvidence();
+    });
+    q("quickProject").addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLSelectElement)) return;
+      state.projectId = target.value || "";
+      state.conversationId = "";
+      syncProjectSelectors(state.projectId);
+      if (state.projectId) {
+        loadEvidence();
+      } else {
+        setConversationInfo("Conversacion: selecciona proyecto");
+      }
     });
     q("refreshEvidence").addEventListener("click", loadEvidence);
     q("refreshRuns").addEventListener("click", loadRuns);
