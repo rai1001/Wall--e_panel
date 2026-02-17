@@ -1,4 +1,12 @@
-# Runbook Operativo (v1)
+﻿# Runbook Operativo (v1)
+
+## 0) Script parity (docs <-> package.json)
+
+Los siguientes scripts estan declarados en `package.json` y son los oficiales:
+- `npm run backup`
+- `npm run restore -- --file=<backup.db>`
+- `npm run reindex`
+- `npm run reset:local`
 
 ## 1) Arranque y checks
 
@@ -25,7 +33,7 @@ npm run restore -- --file=backups/assistant-YYYY-MM-DDTHH-MM-SS.db
 
 ## 3) Reindex de memoria vectorial
 
-Completo (límite default):
+Completo (limite default):
 
 ```bash
 npm run reindex
@@ -48,7 +56,7 @@ curl -X POST http://localhost:3000/v1/memory/hygiene/run \
   -d '{"processedEventsMaxAgeDays":30}'
 ```
 
-## 5) Operación panel
+## 5) Operacion panel
 
 Dashboard:
 
@@ -61,15 +69,27 @@ Funciones:
 - promover a global
 - olvidar
 - bloquear
-- revisión de aprobaciones y runs
+- revision de aprobaciones y runs
 
 ## 6) Reset local seguro
 
+Bash:
+
 ```bash
 FORCE_RESET=true npm run reset:local
+```
+
+PowerShell:
+
+```powershell
+$env:FORCE_RESET='true'; npm run reset:local
 ```
 
 ## 7) Indicadores clave a vigilar
 - `GET /v1/ops/memory/metrics`
 - `GET /v1/ops/automation/health`
 - `GET /v1/ops/audit/aggregated`
+
+## 8) Troubleshooting
+
+Ver `docs/troubleshooting.md` para errores comunes de DB, puerto, JWT y filesystem.

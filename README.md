@@ -1,38 +1,39 @@
-# OpenClaw Assistant Panel - v1
+﻿# OpenClaw Assistant Panel - v1
 
-Asistente modular con 5 dominios:
+Modular assistant with 5 domains:
 - `chat`
 - `project`
 - `memory`
 - `automation`
 - `policy`
 
-Flujo E2E base:
+Base E2E flow:
 
-`Crear tarea en Proyecto -> dispara Automatizacion -> genera mensaje en Chat -> guarda Memoria`
+`Create task in Project -> trigger Automation -> post Chat message -> save Memory`
 
 ## Stack
 - Node.js + TypeScript
 - Express
 - SQLite (`better-sqlite3`)
 - JWT (`jsonwebtoken`) + `bcryptjs`
-- Zod (validación)
+- Zod (request validation)
 - Vitest + Supertest
 
-## Quick Start
+## Quick start
 
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
-Credenciales seed:
+Seed credentials:
 - `admin@local / admin123`
 - `manager@local / manager123`
 - `member@local / member123`
 - `viewer@local / viewer123`
 
-## Validación de calidad
+## Quality checks
 
 ```bash
 npm run typecheck
@@ -46,16 +47,24 @@ CI local:
 npm run ci
 ```
 
+## Environment
+
+See `.env.example` for minimum config:
+- `PORT`
+- `DB_PATH`
+- `JWT_SECRET` or `JWT_SECRETS`
+- optional flags
+
 ## API versioning
 
-- Recomendado: `/v1/*`
-- Compat legacy: rutas antiguas aún existen con headers de deprecación.
-- Detalle de migración: `docs/day3-migration.md`
+- Recommended: `/v1/*`
+- Legacy compatibility: old routes still mounted with deprecation headers.
+- Migration details: `docs/day3-migration.md`
 
-## Memoria compartida persistente
+## Shared persistent memory
 
-### Namespace de memoria
-Cada memoria soporta:
+### Namespace fields
+Each memory supports:
 - `projectId`
 - `agentId`
 - `scope` (`global`, `proyecto`, `privado`)
@@ -65,40 +74,40 @@ Cada memoria soporta:
 - `timestamp`
 - `tags`
 
-### Búsqueda híbrida
-- Vectorial (embeddings persistentes en SQLite)
-- Lexical
-- Prioridad contextual:
-  - proyecto activo
-  - scope global
-  - agente actual
+### Hybrid retrieval
+- Vector embeddings stored in SQLite (`memory_embeddings`)
+- Lexical score
+- Context priority:
+  - active project
+  - global scope
+  - current agent
 
-Endpoint principal:
+Main endpoint:
 - `GET /v1/memory/search`
 
 ### Data hygiene
-- deduplicación
-- TTL y archivado de temporales
-- limpieza de `processed_events`
+- deduplication
+- TTL and archive for temporary memory
+- cleanup of old `processed_events`
 
 Endpoints:
 - `POST /v1/memory/reindex`
 - `POST /v1/memory/deduplicate`
 - `POST /v1/memory/hygiene/run`
 
-### Acciones panel
+### Panel actions
 - `POST /v1/memory/:id/promote-global`
 - `POST /v1/memory/:id/forget`
 - `POST /v1/memory/:id/block`
 
-## Operación diaria
+## Daily operation
 
-### 1) Respaldo
+### 1) Backup
 ```bash
 npm run backup
 ```
 
-### 2) Reindex de memoria
+### 2) Reindex memory
 ```bash
 npm run reindex
 ```
@@ -108,38 +117,54 @@ npm run reindex
 npm run restore -- --file=backups/assistant-YYYY-MM-DDTHH-MM-SS.db
 ```
 
-### 4) Reset local seguro
+### 4) Safe local reset
+Bash:
 ```bash
 FORCE_RESET=true npm run reset:local
 ```
+PowerShell:
+```powershell
+$env:FORCE_RESET='true'; npm run reset:local
+```
 
-### 5) Panel operativo
+### 5) Operations panel
 - `GET /v1/dashboard`
 
-Dashboard incluye:
-- métricas de requests/automation/memory
-- aprobaciones pendientes
+Dashboard includes:
+- request/automation/memory metrics
+- pending approvals
 - run logs
-- vista de memorias con filtros y acciones
+- memory list with filters and actions
 
-Runbook completo:
+Runbook:
 - `docs/runbook.md`
 
-## Seguridad
-- JWT con rotación simple (`JWT_SECRETS` con múltiples secretos)
-- Rate limit global + rate limit específico en login
-- Lockout progresivo por intentos fallidos
-- Validación fuerte de payloads con Zod
-- Auditoría persistente
+## Security
+- JWT with simple rotation (`JWT_SECRETS`)
+- Global rate limit + dedicated login rate limit
+- Progressive lockout after failed login attempts
+- Strong payload validation with Zod
+- Persistent audit records
 
-## Observabilidad
-Endpoints:
+## Observability
 - `GET /v1/ops/metrics`
 - `GET /v1/ops/memory/metrics`
 - `GET /v1/ops/automation/health`
 - `GET /v1/ops/audit/aggregated`
 
-## Documentación técnica
+## Troubleshooting
+- `docs/troubleshooting.md`
+
+## Known issues (2026-02-17)
+
+Current status:
+- Day 3 stable and operational for daily use.
+
+Pending fixes:
+- Improve semantic embedding quality beyond current local deterministic vectorization.
+- Move rate limiting from local memory to a truly distributed backend store.
+
+## Technical docs
 - `docs/adr-day1.md`
 - `docs/adr-day2.md`
 - `docs/adr-day3.md`
@@ -147,3 +172,5 @@ Endpoints:
 - `docs/day3-checklist.md`
 - `docs/openapi.yaml`
 - `docs/day3-migration.md`
+- `docs/runbook.md`
+- `docs/troubleshooting.md`

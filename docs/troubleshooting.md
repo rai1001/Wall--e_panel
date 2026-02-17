@@ -1,0 +1,91 @@
+﻿# Troubleshooting
+
+## 1) `SqliteError: no such column: project_id`
+
+Cause:
+- Old schema plus old migration order.
+
+Fix:
+1. Stop app.
+2. Backup current DB:
+```bash
+npm run backup
+```
+3. Ensure you are on latest code.
+4. Start app to run migration:
+```bash
+npm run dev
+```
+5. If it still fails, rollback:
+```bash
+npm run restore -- --file=backups/<backup-file>.db
+```
+
+## 2) `EADDRINUSE` / puerto ocupado
+
+Cause:
+- Another process is already using `PORT` (default `3000`).
+
+Fix options:
+1. Use another port:
+```bash
+PORT=3001 npm run dev
+```
+PowerShell:
+```powershell
+$env:PORT='3001'; npm run dev
+```
+2. Stop process using port 3000:
+```powershell
+Get-NetTCPConnection -LocalPort 3000 | Select-Object -ExpandProperty OwningProcess
+Stop-Process -Id <PID> -Force
+```
+
+## 3) JWT / DB_PATH mal configurados
+
+Symptoms:
+- Login works but protected endpoints fail with `401`.
+- App starts with empty data unexpectedly.
+
+Checks:
+1. Verify JWT settings:
+- Use either `JWT_SECRET` or `JWT_SECRETS`.
+- If rotating, put newest key first: `JWT_SECRETS=new_key,old_key`.
+2. Verify DB path:
+- `DB_PATH` must point to a writable file path.
+- If omitted, default is `data/assistant.db`.
+
+## 4) SQLite file permissions
+
+Symptoms:
+- `SQLITE_CANTOPEN` or write failures.
+
+Fix:
+1. Ensure directory exists and is writable.
+2. Avoid read-only folders.
+3. Test with local path:
+```bash
+DB_PATH=./data/assistant.db npm run dev
+```
+PowerShell:
+```powershell
+$env:DB_PATH='.\\data\\assistant.db'; npm run dev
+```
+
+## 5) Reset script does not run
+
+Symptom:
+- `Reset bloqueado por seguridad...`
+
+Fix:
+- Set `FORCE_RESET=true` explicitly.
+
+Bash:
+```bash
+FORCE_RESET=true npm run reset:local
+```
+
+PowerShell:
+```powershell
+$env:FORCE_RESET='true'; npm run reset:local
+```
