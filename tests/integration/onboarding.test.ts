@@ -12,7 +12,7 @@ describe("Onboarding bootstrap", () => {
   it("crea proyecto, conversacion y regla en una llamada", async () => {
     const app = createApp();
     const adminToken = await login(app, "admin@local", "admin123");
-    const viewerToken = await login(app, "viewer@local", "viewer123");
+    await login(app, "viewer@local", "viewer123");
 
     const bootstrap = await request(app)
       .post("/v1/onboarding/bootstrap-flow")
@@ -35,7 +35,7 @@ describe("Onboarding bootstrap", () => {
 
     const messages = await request(app)
       .get(`/v1/chat/conversations/${conversationId}/messages`)
-      .set({ authorization: `Bearer ${viewerToken}` });
+      .set({ authorization: `Bearer ${adminToken}` });
     expect(messages.status).toBe(200);
     expect(messages.body.length).toBeGreaterThanOrEqual(1);
   });

@@ -26,7 +26,16 @@ describe("Day 1 integrated flow", () => {
     const conversationResponse = await request(app)
       .post("/v1/chat/conversations")
       .set(adminHeaders)
-      .send({ title: "Chat Proyecto Integrado", projectId });
+      .send({
+        title: "Chat Proyecto Integrado",
+        projectId,
+        participants: [
+          {
+            actorType: "user",
+            actorId: "user_viewer"
+          }
+        ]
+      });
     expect(conversationResponse.status).toBe(201);
     const conversationId = conversationResponse.body.id as string;
 
