@@ -17,12 +17,17 @@ Day 3 left two operational gaps:
 - persisted metadata per embedding (`provider`, `model`, `version`, `dim`)
 
 2. Add optional remote embedding mode:
-- `EMBEDDING_PROVIDER=openai` + `OPENAI_API_KEY`
+- `EMBEDDING_PROVIDER=google` + `GOOGLE_API_KEY`
 - automatic fallback to local embedding on provider errors
 
 3. Replace in-memory-only rate limiting with backend-selectable limiter:
 - `RATE_LIMIT_STORE=db` (default) uses SQLite shared table `rate_limit_buckets`
 - `RATE_LIMIT_STORE=memory` keeps local mode for lightweight/dev scenarios
+
+4. Add ops observability for runtime pin and drift:
+- active `provider/model/version` exposed in `/v1/ops/embedding/runtime`
+- drift and version distribution exposed in `/v1/ops/memory/metrics`
+- rate-limit health in `/v1/ops/rate-limit/health`
 
 ## Consequences
 

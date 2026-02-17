@@ -90,9 +90,9 @@ npm run restore -- --file=backups/<your-backup-file>.db
 - `DB_PATH` (optional, default `data/assistant.db`)
 - `JWT_SECRETS` (optional, comma-separated)
 - `JWT_SECRET` (fallback)
-- `EMBEDDING_PROVIDER` (`local` or `openai`)
-- `OPENAI_API_KEY` (required for `EMBEDDING_PROVIDER=openai`)
-- `OPENAI_EMBEDDING_MODEL` (optional, default `text-embedding-3-small`)
+- `EMBEDDING_PROVIDER` (`local` or `google`)
+- `GOOGLE_API_KEY` (required for `EMBEDDING_PROVIDER=google`)
+- `GOOGLE_EMBEDDING_MODEL` (optional, default `text-embedding-004`)
 - `RATE_LIMIT_STORE` (`db` recommended, `memory` fallback)
 - `ALLOW_LEGACY_HEADERS` (optional, default `false`)
 - `FORCE_RESET=true` only for local reset script

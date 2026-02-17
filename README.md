@@ -53,7 +53,7 @@ See `.env.example` for minimum config:
 - `PORT`
 - `DB_PATH`
 - `JWT_SECRET` or `JWT_SECRETS`
-- `EMBEDDING_PROVIDER` (`local` or `openai`)
+- `EMBEDDING_PROVIDER` (`local` or `google`)
 - `RATE_LIMIT_STORE` (`db` recommended)
 - optional flags
 
@@ -77,12 +77,15 @@ Each memory supports:
 - `tags`
 
 ### Hybrid retrieval
-- Semantic embeddings (local `semantic-hash-v2` or optional OpenAI) stored in SQLite (`memory_embeddings`)
+- Semantic embeddings (local `semantic-hash-v2` or optional Google) stored in SQLite (`memory_embeddings`)
 - Lexical score
 - Context priority:
   - active project
   - global scope
   - current agent
+- Runtime pin observability via:
+  - `GET /v1/ops/embedding/runtime`
+  - `GET /v1/ops/memory/metrics` (includes drift % old/new)
 
 Main endpoint:
 - `GET /v1/memory/search`
@@ -151,8 +154,10 @@ Runbook:
 ## Observability
 - `GET /v1/ops/metrics`
 - `GET /v1/ops/memory/metrics`
+- `GET /v1/ops/embedding/runtime`
 - `GET /v1/ops/automation/health`
 - `GET /v1/ops/audit/aggregated`
+- `GET /v1/ops/rate-limit/health`
 
 ## Troubleshooting
 - `docs/troubleshooting.md`
@@ -163,7 +168,7 @@ Current status:
 - Day 4 hardening applied and operational for daily use.
 
 Pending fixes:
-- Add cost/latency guardrails dashboard for OpenAI embedding mode (quota, fallback ratio, timeout stats).
+- Add cost/latency guardrails dashboard for Google embedding mode (quota, fallback ratio, timeout stats).
 
 ## Technical docs
 - `docs/adr-day1.md`

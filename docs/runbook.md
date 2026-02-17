@@ -9,7 +9,7 @@ Los siguientes scripts estan declarados en `package.json` y son los oficiales:
 - `npm run reset:local`
 
 Config flags relevant for operations:
-- `EMBEDDING_PROVIDER=local|openai`
+- `EMBEDDING_PROVIDER=local|google`
 - `RATE_LIMIT_STORE=db|memory` (`db` recommended for shared limits)
 
 ## 1) Arranque y checks
@@ -97,3 +97,30 @@ $env:FORCE_RESET='true'; npm run reset:local
 ## 8) Troubleshooting
 
 Ver `docs/troubleshooting.md` para errores comunes de DB, puerto, JWT y filesystem.
+
+## 9) Rollback embedding provider (Google quota/failure)
+
+If Google embedding provider degrades (errors, quota, high latency):
+
+1. Switch to local fallback:
+```bash
+EMBEDDING_PROVIDER=local npm run dev
+```
+PowerShell:
+```powershell
+$env:EMBEDDING_PROVIDER='local'; npm run dev
+```
+
+2. Reindex only recent data first (partial recovery):
+```bash
+npm run reindex -- --since=2026-02-17T00:00:00.000Z --limit=2000
+```
+
+3. Validate drift in runtime metrics:
+- `GET /v1/ops/embedding/runtime`
+- `GET /v1/ops/memory/metrics` (`embeddingDrift`)
+
+4. When Google service stabilizes, restore provider and run full reindex:
+```bash
+EMBEDDING_PROVIDER=google npm run reindex
+```
