@@ -72,6 +72,7 @@ function migrate(connection: Database.Database) {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       status TEXT NOT NULL,
+      created_by TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -220,6 +221,7 @@ function migrate(connection: Database.Database) {
   ensureColumn(connection, "automation_rules", "trigger_conditions_json", "TEXT");
   ensureColumn(connection, "automation_rules", "trigger_cron", "TEXT");
   ensureColumn(connection, "conversations", "project_id", "TEXT");
+  ensureColumn(connection, "projects", "created_by", "TEXT");
   ensureColumn(connection, "tasks", "project_id", "TEXT");
   ensureColumn(connection, "milestones", "project_id", "TEXT");
   ensureColumn(connection, "run_logs", "correlation_id", "TEXT");
@@ -244,6 +246,7 @@ function migrate(connection: Database.Database) {
   ensureColumn(connection, "rate_limit_buckets", "last_blocked_at", "INTEGER");
 
   ensureIndex(connection, "idx_memory_project", "memory_items", "project_id");
+  ensureIndex(connection, "idx_projects_created_by", "projects", "created_by");
   ensureIndex(connection, "idx_memory_agent", "memory_items", "agent_id");
   ensureIndex(connection, "idx_memory_type", "memory_items", "memory_type");
   ensureIndex(connection, "idx_memory_archived", "memory_items", "archived");
@@ -253,6 +256,11 @@ function migrate(connection: Database.Database) {
 }
 
 function seed(connection: Database.Database) {
+  const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+  if (isProduction && (process.env.ALLOW_PROD_SEED ?? "").toLowerCase() !== "true") {
+    return;
+  }
+
   const total = connection.prepare("SELECT COUNT(1) as count FROM users").get() as { count: number };
   if (total.count > 0) {
     return;

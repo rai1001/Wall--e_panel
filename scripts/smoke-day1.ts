@@ -38,7 +38,11 @@ async function run() {
   const conversation = await request(app)
     .post("/v1/chat/conversations")
     .set(adminHeaders)
-    .send({ title: "Smoke Conversation", projectId });
+    .send({
+      title: "Smoke Conversation",
+      projectId,
+      participants: [{ actorType: "user", actorId: "user_viewer" }]
+    });
 
   if (conversation.status !== 201) {
     throw new Error(`No se pudo crear conversacion: ${conversation.status}`);

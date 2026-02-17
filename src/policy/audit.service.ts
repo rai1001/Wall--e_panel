@@ -2,6 +2,7 @@ import { Request, RequestHandler } from "express";
 import { Database } from "better-sqlite3";
 import { createId } from "../shared/id";
 import { Role } from "../types/domain";
+import { redactSensitiveData } from "../shared/security/redaction";
 
 export interface AuditRecord {
   id: string;
@@ -27,10 +28,18 @@ export class AuditService {
   constructor(private readonly connection: Database) {}
 
   record(input: Omit<AuditRecord, "id" | "timestamp">) {
+    const sanitizedDetails = input.details
+      ? (redactSensitiveData(input.details) as Record<string, unknown>)
+      : undefined;
+
     const record: AuditRecord = {
       id: createId("audit"),
       timestamp: new Date().toISOString(),
-      ...input
+      actorId: input.actorId,
+      role: input.role,
+      action: input.action,
+      resource: input.resource,
+      ...(sanitizedDetails ? { details: sanitizedDetails } : {})
     };
 
     this.connection

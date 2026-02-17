@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { Database } from "better-sqlite3";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { createId } from "../shared/id";
-import { AppError, NotFoundError } from "../shared/http/errors";
+import { AppError, ForbiddenError, NotFoundError } from "../shared/http/errors";
 import { MemoryItem } from "../types/domain";
 import {
   cosineSimilarity,
@@ -415,8 +415,12 @@ export class MemoryService {
     return this.getById(memoryId);
   }
 
-  forget(memoryId: string) {
-    this.ensureMemoryExists(memoryId);
+  forget(memoryId: string, actor?: { actorId: string; role: string }) {
+    if (actor) {
+      this.assertOwnershipForMutation(memoryId, actor.actorId, actor.role);
+    } else {
+      this.ensureMemoryExists(memoryId);
+    }
     this.connection
       .prepare(
         `UPDATE memory_items
@@ -427,8 +431,12 @@ export class MemoryService {
     return this.getById(memoryId);
   }
 
-  block(memoryId: string) {
-    this.ensureMemoryExists(memoryId);
+  block(memoryId: string, actor?: { actorId: string; role: string }) {
+    if (actor) {
+      this.assertOwnershipForMutation(memoryId, actor.actorId, actor.role);
+    } else {
+      this.ensureMemoryExists(memoryId);
+    }
     this.connection
       .prepare(
         `UPDATE memory_items
@@ -437,6 +445,11 @@ export class MemoryService {
       )
       .run("blocked", new Date().toISOString(), memoryId);
     return this.getById(memoryId);
+  }
+
+  promoteToGlobalOwned(memoryId: string, actorId: string, role: string) {
+    this.assertOwnershipForMutation(memoryId, actorId, role);
+    return this.promoteToGlobal(memoryId);
   }
 
   getEmbeddingRuntime() {
@@ -799,6 +812,30 @@ export class MemoryService {
 
     if (!row) {
       throw new NotFoundError(`Memory ${memoryId} no encontrada`);
+    }
+  }
+
+  private assertOwnershipForMutation(memoryId: string, actorId: string, role: string) {
+    const row = this.connection
+      .prepare(
+        `SELECT id, created_by
+         FROM memory_items
+         WHERE id = ?`
+      )
+      .get(memoryId) as { id: string; created_by: string | null } | undefined;
+
+    if (!row) {
+      throw new NotFoundError(`Memory ${memoryId} no encontrada`);
+    }
+
+    if (role === "admin" || role === "manager") {
+      return;
+    }
+
+    if (!row.created_by || row.created_by !== actorId) {
+      throw new ForbiddenError(
+        `Actor ${actorId} no tiene ownership para mutar memoria ${memoryId}`
+      );
     }
   }
 

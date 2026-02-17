@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import path from "node:path";
 import fs from "node:fs";
 import { createAutomationRouter } from "./automation/automation.router";
@@ -81,6 +82,26 @@ function mountDomainRouters(router: express.Router, context: AppContext) {
 
 export function createApp(context: AppContext = createAppContext()) {
   const app = express();
+  app.disable("x-powered-by");
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+          imgSrc: ["'self'", "data:"],
+          connectSrc: ["'self'"],
+          objectSrc: ["'none'"],
+          frameAncestors: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"]
+        }
+      },
+      crossOriginEmbedderPolicy: false
+    })
+  );
   app.use(express.json({ limit: "1mb" }));
   app.use(attachCorrelationId);
   app.use(createAttachActor(context.authService));

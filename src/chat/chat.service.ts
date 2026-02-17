@@ -1,13 +1,14 @@
 import { Database } from "better-sqlite3";
 import { createId } from "../shared/id";
 import { AppError, NotFoundError } from "../shared/http/errors";
-import { Conversation, Message, MessageRole, Participant } from "../types/domain";
+import { Conversation, Message, MessageRole, Participant, Role } from "../types/domain";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 
 export interface CreateConversationInput {
   title: string;
   projectId?: string;
   participants?: Array<{ actorType: string; actorId: string }>;
+  ownerActorId?: string;
 }
 
 export interface SendMessageInput {
@@ -101,7 +102,18 @@ export class ChatService {
        VALUES (?, ?, ?, ?)`
     );
 
-    for (const participant of input.participants ?? []) {
+    const participants: Array<{ actorType: string; actorId: string }> = [...(input.participants ?? [])];
+    if (input.ownerActorId) {
+      participants.push({ actorType: "user", actorId: input.ownerActorId });
+    }
+
+    const participantKeys = new Set<string>();
+    for (const participant of participants) {
+      const key = `${participant.actorType}:${participant.actorId}`;
+      if (participantKeys.has(key)) {
+        continue;
+      }
+      participantKeys.add(key);
       insertParticipant.run(
         createId("participant"),
         conversation.id,
@@ -239,6 +251,25 @@ export class ChatService {
       .all(conversationId) as ParticipantRow[];
 
     return rows.map((row) => this.mapParticipant(row));
+  }
+
+  canActorAccessConversation(conversationId: string, actorId: string, role: Role) {
+    this.getConversationById(conversationId);
+    if (role === "admin" || role === "manager") {
+      return true;
+    }
+
+    const row = this.connection
+      .prepare(
+        `SELECT 1
+         FROM participants
+         WHERE conversation_id = ?
+           AND actor_id = ?
+         LIMIT 1`
+      )
+      .get(conversationId, actorId) as { 1: number } | undefined;
+
+    return Boolean(row);
   }
 
   listTimeline(input: ChatTimelineInput = {}): ChatTimelineEntry[] {

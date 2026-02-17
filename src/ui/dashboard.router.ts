@@ -862,6 +862,12 @@ function renderDashboardHtml(token: string, role: string) {
         if (action === "approval-approve" || action === "approval-reject") {
           const approvalId = target.getAttribute("data-approval-id");
           if (!approvalId) return;
+          if (action === "approval-reject") {
+            const confirmed = window.confirm(
+              "Vas a rechazar una accion sensible. Esta accion no se puede deshacer facilmente. Continuar?"
+            );
+            if (!confirmed) return;
+          }
           approveAction(approvalId, action === "approval-approve" ? "approve" : "reject");
           return;
         }
@@ -869,6 +875,18 @@ function renderDashboardHtml(token: string, role: string) {
         if (action === "memory-promote" || action === "memory-forget" || action === "memory-block") {
           const memoryId = target.getAttribute("data-memory-id");
           if (!memoryId) return;
+          if (action === "memory-forget") {
+            const confirmed = window.confirm(
+              "Olvidar memoria archivara este item. Confirmar accion?"
+            );
+            if (!confirmed) return;
+          }
+          if (action === "memory-block") {
+            const confirmed = window.confirm(
+              "Bloquear memoria la marcara como bloqueada y archivada. Confirmar accion?"
+            );
+            if (!confirmed) return;
+          }
           const endpointAction = action === "memory-promote"
             ? "promote-global"
             : action === "memory-forget"

@@ -37,6 +37,7 @@ export interface Project {
   name: string;
   status: ProjectStatus;
   createdAt: string;
+  createdBy?: string;
 }
 
 export interface Task {

@@ -2,11 +2,12 @@ import { Database } from "better-sqlite3";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { createId } from "../shared/id";
 import { AppError, NotFoundError } from "../shared/http/errors";
-import { Milestone, Project, ProjectStatus, Task, TaskStatus } from "../types/domain";
+import { Milestone, Project, ProjectStatus, Role, Task, TaskStatus } from "../types/domain";
 
 export interface CreateProjectInput {
   name: string;
   status?: ProjectStatus;
+  createdBy?: string;
 }
 
 export interface UpdateProjectInput {
@@ -30,6 +31,7 @@ interface ProjectRow {
   id: string;
   name: string;
   status: ProjectStatus;
+  created_by: string | null;
   created_at: string;
 }
 
@@ -67,15 +69,16 @@ export class ProjectService {
       id: createId("project"),
       name,
       status: input.status ?? "active",
+      ...(input.createdBy ? { createdBy: input.createdBy } : {}),
       createdAt: new Date().toISOString()
     };
 
     this.connection
       .prepare(
-        `INSERT INTO projects (id, name, status, created_at)
-         VALUES (?, ?, ?, ?)`
+        `INSERT INTO projects (id, name, status, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?)`
       )
-      .run(project.id, project.name, project.status, project.createdAt);
+      .run(project.id, project.name, project.status, project.createdBy ?? null, project.createdAt);
 
     return project;
   }
@@ -83,7 +86,7 @@ export class ProjectService {
   listProjects() {
     const rows = this.connection
       .prepare(
-        `SELECT id, name, status, created_at
+        `SELECT id, name, status, created_by, created_at
          FROM projects
          ORDER BY created_at DESC`
       )
@@ -95,7 +98,7 @@ export class ProjectService {
   getProjectById(projectId: string) {
     const row = this.connection
       .prepare(
-        `SELECT id, name, status, created_at
+        `SELECT id, name, status, created_by, created_at
          FROM projects
          WHERE id = ?`
       )
@@ -122,6 +125,86 @@ export class ProjectService {
       .run(nextName, nextStatus, projectId);
 
     return this.getProjectById(projectId);
+  }
+
+  listProjectsForActor(actorId: string, role: Role) {
+    if (role === "admin" || role === "manager") {
+      return this.listProjects();
+    }
+
+    const rows = this.connection
+      .prepare(
+        `SELECT p.id, p.name, p.status, p.created_by, p.created_at
+         FROM projects p
+         WHERE p.created_by = ?
+            OR EXISTS (
+              SELECT 1
+              FROM tasks t
+              WHERE t.project_id = p.id
+                AND t.assignee = ?
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM conversations c
+              INNER JOIN participants part
+                ON part.conversation_id = c.id
+              WHERE c.project_id = p.id
+                AND part.actor_id = ?
+            )
+         ORDER BY p.created_at DESC`
+      )
+      .all(actorId, actorId, actorId) as ProjectRow[];
+
+    return rows.map((row) => this.mapProject(row));
+  }
+
+  canActorAccessProject(projectId: string, actorId: string, role: Role) {
+    const project = this.connection
+      .prepare(
+        `SELECT id, name, status, created_by, created_at
+         FROM projects
+         WHERE id = ?`
+      )
+      .get(projectId) as ProjectRow | undefined;
+
+    if (!project) {
+      throw new NotFoundError(`Proyecto ${projectId} no encontrado`);
+    }
+
+    if (role === "admin" || role === "manager") {
+      return true;
+    }
+
+    if (project.created_by && project.created_by === actorId) {
+      return true;
+    }
+
+    const hasTaskOwnership = this.connection
+      .prepare(
+        `SELECT 1
+         FROM tasks
+         WHERE project_id = ?
+           AND assignee = ?
+         LIMIT 1`
+      )
+      .get(projectId, actorId) as { 1: number } | undefined;
+    if (hasTaskOwnership) {
+      return true;
+    }
+
+    const hasConversationOwnership = this.connection
+      .prepare(
+        `SELECT 1
+         FROM conversations c
+         INNER JOIN participants p
+           ON p.conversation_id = c.id
+         WHERE c.project_id = ?
+           AND p.actor_id = ?
+         LIMIT 1`
+      )
+      .get(projectId, actorId) as { 1: number } | undefined;
+
+    return Boolean(hasConversationOwnership);
   }
 
   deleteProject(projectId: string) {
@@ -283,6 +366,7 @@ export class ProjectService {
       id: row.id,
       name: row.name,
       status: row.status,
+      ...(row.created_by ? { createdBy: row.created_by } : {}),
       createdAt: row.created_at
     };
   }

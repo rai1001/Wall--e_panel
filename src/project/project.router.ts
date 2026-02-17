@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { requirePermission } from "../policy/middleware";
 import { asyncHandler } from "../shared/http/async-handler";
-import { AppError } from "../shared/http/errors";
+import { AppError, ForbiddenError } from "../shared/http/errors";
 import { validateBody, validateParams } from "../shared/http/validation";
 import { ProjectService } from "./project.service";
+import { Role } from "../types/domain";
 
 const projectStatusSchema = z.enum(["active", "paused", "done"]);
 const taskStatusSchema = z.enum(["todo", "in_progress", "done"]);
@@ -41,6 +42,23 @@ const taskParamSchema = z.object({
 export function createProjectRouter(projectService: ProjectService) {
   const router = Router();
 
+  function enforceProjectOwnership(
+    role: Role,
+    actorId: string,
+    projectId: string
+  ) {
+    if (role === "admin" || role === "manager") {
+      return;
+    }
+
+    const hasAccess = projectService.canActorAccessProject(projectId, actorId, role);
+    if (!hasAccess) {
+      throw new ForbiddenError(
+        `Actor ${actorId} no autorizado para operar proyecto ${projectId}`
+      );
+    }
+  }
+
   router.post(
     "/",
     requirePermission("create", "proyecto"),
@@ -48,7 +66,8 @@ export function createProjectRouter(projectService: ProjectService) {
     asyncHandler(async (req, res) => {
       const project = projectService.createProject({
         name: req.body.name,
-        status: req.body.status
+        status: req.body.status,
+        createdBy: req.actorId
       });
       res.status(201).json(project);
     })
@@ -57,8 +76,13 @@ export function createProjectRouter(projectService: ProjectService) {
   router.get(
     "/",
     requirePermission("read", "proyecto"),
-    asyncHandler(async (_req, res) => {
-      res.status(200).json(projectService.listProjects());
+    asyncHandler(async (req, res) => {
+      if (req.role === "admin" || req.role === "manager") {
+        res.status(200).json(projectService.listProjects());
+        return;
+      }
+
+      res.status(200).json(projectService.listProjectsForActor(req.actorId, req.role));
     })
   );
 
@@ -72,6 +96,7 @@ export function createProjectRouter(projectService: ProjectService) {
         throw new AppError("project id requerido", 400);
       }
 
+      enforceProjectOwnership(req.role, req.actorId, projectId);
       res.status(200).json(projectService.getProjectById(projectId));
     })
   );
@@ -87,6 +112,7 @@ export function createProjectRouter(projectService: ProjectService) {
         throw new AppError("project id requerido", 400);
       }
 
+      enforceProjectOwnership(req.role, req.actorId, projectId);
       const project = projectService.updateProject(projectId, {
         name: req.body.name,
         status: req.body.status
@@ -106,6 +132,7 @@ export function createProjectRouter(projectService: ProjectService) {
         throw new AppError("project id requerido", 400);
       }
 
+      enforceProjectOwnership(req.role, req.actorId, projectId);
       projectService.deleteProject(projectId);
       res.status(204).send();
     })
@@ -122,6 +149,7 @@ export function createProjectRouter(projectService: ProjectService) {
         throw new AppError("project id requerido", 400);
       }
 
+      enforceProjectOwnership(req.role, req.actorId, projectId);
       const task = await projectService.createTask(
         projectId,
         {
@@ -146,6 +174,7 @@ export function createProjectRouter(projectService: ProjectService) {
         throw new AppError("project id requerido", 400);
       }
 
+      enforceProjectOwnership(req.role, req.actorId, projectId);
       res.status(200).json(projectService.listTasks(projectId));
     })
   );
@@ -162,6 +191,7 @@ export function createProjectRouter(projectService: ProjectService) {
         throw new AppError("project id y task id son requeridos", 400);
       }
 
+      enforceProjectOwnership(req.role, req.actorId, projectId);
       const task = await projectService.updateTaskStatus(
         projectId,
         taskId,

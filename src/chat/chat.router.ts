@@ -3,8 +3,9 @@ import { z } from "zod";
 import { asyncHandler } from "../shared/http/async-handler";
 import { requirePermission } from "../policy/middleware";
 import { ChatService } from "./chat.service";
-import { AppError } from "../shared/http/errors";
+import { AppError, ForbiddenError } from "../shared/http/errors";
 import { validateBody, validateParams, validateQuery } from "../shared/http/validation";
+import { Role } from "../types/domain";
 
 const conversationBodySchema = z.object({
   title: z.string().min(3).max(120),
@@ -42,6 +43,23 @@ const timelineQuerySchema = z.object({
 export function createChatRouter(chatService: ChatService) {
   const router = Router();
 
+  function enforceConversationOwnership(
+    role: Role,
+    actorId: string,
+    conversationId: string
+  ) {
+    if (role === "admin" || role === "manager") {
+      return;
+    }
+
+    const hasAccess = chatService.canActorAccessConversation(conversationId, actorId, role);
+    if (!hasAccess) {
+      throw new ForbiddenError(
+        `Actor ${actorId} no autorizado para operar conversacion ${conversationId}`
+      );
+    }
+  }
+
   router.post(
     "/conversations",
     requirePermission("create", "chat"),
@@ -50,7 +68,8 @@ export function createChatRouter(chatService: ChatService) {
       const conversation = chatService.createConversation({
         title: req.body.title,
         projectId: req.body.projectId,
-        participants: req.body.participants
+        participants: req.body.participants,
+        ownerActorId: req.actorId
       });
 
       res.status(201).json(conversation);
@@ -68,6 +87,7 @@ export function createChatRouter(chatService: ChatService) {
         throw new AppError("conversation id requerido", 400);
       }
 
+      enforceConversationOwnership(req.role, req.actorId, conversationId);
       const message = await chatService.sendMessage(
         conversationId,
         {
@@ -93,6 +113,7 @@ export function createChatRouter(chatService: ChatService) {
         throw new AppError("conversation id requerido", 400);
       }
 
+      enforceConversationOwnership(req.role, req.actorId, conversationId);
       const messages = chatService.listMessages(conversationId);
       res.status(200).json(messages);
     })

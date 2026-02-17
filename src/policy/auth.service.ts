@@ -47,8 +47,20 @@ export class AuthService {
     const envKeys = process.env.JWT_SECRETS
       ? process.env.JWT_SECRETS.split(",").map((item) => item.trim()).filter(Boolean)
       : [];
-    const fallback = process.env.JWT_SECRET ?? "dev-secret-change-me";
-    const all = envKeys.length > 0 ? envKeys : [fallback];
+    const single = process.env.JWT_SECRET?.trim();
+    const isProduction = (process.env.NODE_ENV ?? "").toLowerCase() === "production";
+    const all = envKeys.length > 0
+      ? envKeys
+      : single
+        ? [single]
+        : isProduction
+          ? []
+          : ["dev-secret-change-me"];
+
+    if (all.length === 0) {
+      throw new AppError("JWT_SECRET/JWT_SECRETS requerido para iniciar autenticacion", 500);
+    }
+
     this.jwtKeys = all.map((value, index) => ({ kid: `k${index + 1}`, value }));
   }
 
@@ -78,7 +90,10 @@ export class AuthService {
       name: row.name
     };
 
-    const activeKey = this.jwtKeys[0] ?? { kid: "k1", value: "dev-secret-change-me" };
+    const activeKey = this.jwtKeys[0];
+    if (!activeKey) {
+      throw new AppError("No hay clave JWT activa", 500);
+    }
     const token = jwt.sign(payload, activeKey.value, {
       expiresIn: "12h",
       keyid: activeKey.kid

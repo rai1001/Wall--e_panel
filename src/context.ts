@@ -9,6 +9,7 @@ import { ProjectService } from "./project/project.service";
 import { createDatabaseClient, DatabaseClient } from "./shared/db/database";
 import { EventBus } from "./shared/events/event-bus";
 import { RateLimiter } from "./shared/http/rate-limit";
+import { assertRuntimeSecurityConfig } from "./config/runtime-security";
 
 export interface AppContext {
   dbClient: DatabaseClient;
@@ -30,6 +31,8 @@ export interface AppContextOptions {
 }
 
 export function createAppContext(options: AppContextOptions = {}): AppContext {
+  assertRuntimeSecurityConfig();
+
   const dbClient = createDatabaseClient(options.dbPath);
   const eventBus = new EventBus();
   const authService = new AuthService(dbClient.connection);

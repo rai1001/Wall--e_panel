@@ -199,7 +199,7 @@ export function createMemoryRouter(memoryService: MemoryService, auditService: A
         throw new AppError("memory id requerido", 400);
       }
 
-      const updated = memoryService.promoteToGlobal(memoryId);
+      const updated = memoryService.promoteToGlobalOwned(memoryId, req.actorId, req.role);
       auditService.record({
         actorId: req.actorId,
         role: req.role,
@@ -221,7 +221,7 @@ export function createMemoryRouter(memoryService: MemoryService, auditService: A
         throw new AppError("memory id requerido", 400);
       }
 
-      const updated = memoryService.forget(memoryId);
+      const updated = memoryService.forget(memoryId, { actorId: req.actorId, role: req.role });
       auditService.record({
         actorId: req.actorId,
         role: req.role,
@@ -243,7 +243,7 @@ export function createMemoryRouter(memoryService: MemoryService, auditService: A
         throw new AppError("memory id requerido", 400);
       }
 
-      const updated = memoryService.block(memoryId);
+      const updated = memoryService.block(memoryId, { actorId: req.actorId, role: req.role });
       auditService.record({
         actorId: req.actorId,
         role: req.role,

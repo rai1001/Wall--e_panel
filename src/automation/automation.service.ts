@@ -7,6 +7,7 @@ import { MetricsService } from "../ops/metrics.service";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { AppError, NotFoundError } from "../shared/http/errors";
 import { createId } from "../shared/id";
+import { redactSensitiveData } from "../shared/security/redaction";
 import {
   Action,
   AutomationRule,
@@ -563,12 +564,14 @@ export class AutomationService {
     reason: string,
     event: DomainEvent
   ) {
+    const sanitizedPayload = redactSensitiveData(event.payload) as Record<string, unknown>;
+
     const deadLetter: DeadLetter = {
       id: createId("dlq"),
       ruleId: rule.id,
       eventKey,
       reason,
-      payload: event.payload,
+      payload: sanitizedPayload,
       createdAt: new Date().toISOString(),
       ...(event.correlationId ? { correlationId: event.correlationId } : {})
     };

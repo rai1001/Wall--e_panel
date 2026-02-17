@@ -45,6 +45,10 @@ function resolveCookieToken(cookieHeader: string | undefined, key: string): stri
 
 export function createAttachActor(authService: AuthService): RequestHandler {
   return (req, _res, next) => {
+    const legacyHeadersEnabled =
+      process.env.ALLOW_LEGACY_HEADERS === "true" &&
+      (process.env.NODE_ENV ?? "").toLowerCase() !== "production";
+
     const token =
       resolveBearerToken(req.header("authorization")) ??
       resolveCookieToken(req.header("cookie"), "oc_token");
@@ -57,7 +61,7 @@ export function createAttachActor(authService: AuthService): RequestHandler {
       return next();
     }
 
-    if (process.env.ALLOW_LEGACY_HEADERS === "true") {
+    if (legacyHeadersEnabled) {
       req.role = resolveRoleFromLegacyHeader(req);
       req.actorId = req.header("x-actor-id") ?? "anonymous";
       req.userId = req.actorId;
