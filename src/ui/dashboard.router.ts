@@ -105,6 +105,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       margin-bottom: 8px;
     }
     .row.single { grid-template-columns: 1fr auto; }
+    .row.chat { grid-template-columns: 120px 1fr auto; }
     input, select, button {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -136,10 +137,20 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     }
     th { color: var(--muted); font-size: 11px; }
     .mono { font-family: Consolas, monospace; font-size: 11px; }
+    .conversation-note {
+      border: 1px dashed var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.02);
+    }
     @media (max-width: 900px) {
       .grid { grid-template-columns: 1fr; }
       .row { grid-template-columns: 1fr; }
       .row.single { grid-template-columns: 1fr; }
+      .row.chat { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -217,6 +228,25 @@ function renderOperationalDashboardHtml(token: string, role: string) {
           <button id="refreshRuns" type="button">Solo runs</button>
         </div>
       </article>
+
+      <article class="card">
+        <h2>Paso 5. Chat operativo</h2>
+        <div class="hint">Envio manual de mensajes. Si no existe conversacion para el proyecto, se crea al enviar.</div>
+        <div id="chatConversationInfo" class="conversation-note mono">Conversacion: selecciona proyecto</div>
+        <form id="chatSendForm" class="row chat">
+          <select id="chatRole">
+            <option value="user">user</option>
+            <option value="assistant">assistant</option>
+            <option value="system">system</option>
+          </select>
+          <input id="chatContent" placeholder="Mensaje para el chat del proyecto" required maxlength="4000" />
+          <button class="primary" type="submit">Enviar</button>
+        </form>
+        <div class="row single">
+          <button id="refreshChat" type="button">Refrescar chat</button>
+          <button id="createConversationBtn" type="button">Nueva conversacion</button>
+        </div>
+      </article>
     </section>
 
     <section class="grid">
@@ -231,8 +261,16 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       <article class="card">
         <h2>Chat timeline (proyecto activo)</h2>
         <table>
+          <thead><tr><th>Timestamp</th><th>Conversacion</th><th>Role</th><th>Contenido</th></tr></thead>
+          <tbody id="timelineBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+        </table>
+      </article>
+
+      <article class="card" style="grid-column: 1 / -1;">
+        <h2>Mensajes de la conversacion activa</h2>
+        <table>
           <thead><tr><th>Timestamp</th><th>Role</th><th>Contenido</th></tr></thead>
-          <tbody id="timelineBody"><tr><td colspan="3">Sin datos</td></tr></tbody>
+          <tbody id="messagesBody"><tr><td colspan="3">Sin conversacion activa</td></tr></tbody>
         </table>
       </article>
 
@@ -248,7 +286,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
 
   <script>
     const token = ${JSON.stringify(token)};
-    const state = { projectId: "" };
+    const state = { projectId: "", conversationId: "", actorId: "anonymous" };
 
     const q = (id) => document.getElementById(id);
     const esc = (v) => String(v ?? "")
@@ -294,6 +332,92 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       tbody.innerHTML = html || '<tr><td colspan="' + fallbackColspan + '">' + esc(fallbackText) + '</td></tr>';
     }
 
+    function activeProjectId() {
+      return q("activeProject").value || state.projectId;
+    }
+
+    function setConversationInfo(text) {
+      const node = q("chatConversationInfo");
+      if (node) {
+        node.textContent = text;
+      }
+    }
+
+    function projectLabel(projectId) {
+      if (!projectId) {
+        return "";
+      }
+
+      const select = q("activeProject");
+      if (!(select instanceof HTMLSelectElement)) {
+        return projectId;
+      }
+
+      const option = Array.from(select.options).find((item) => item.value === projectId);
+      if (!option) {
+        return projectId;
+      }
+
+      return String(option.textContent || "").replace(/\\s\\(.+\\)$/, "").trim() || projectId;
+    }
+
+    async function loadViewerIdentity() {
+      try {
+        const me = await api("/v1/auth/me");
+        if (me && typeof me.actorId === "string" && me.actorId.trim()) {
+          state.actorId = me.actorId.trim();
+        }
+      } catch (_error) {
+        state.actorId = "anonymous";
+      }
+    }
+
+    async function discoverConversationId(projectId) {
+      if (!projectId) {
+        return "";
+      }
+
+      const timeline = await api("/v1/chat/timeline?projectId=" + encodeURIComponent(projectId) + "&limit=25");
+      const found = Array.isArray(timeline)
+        ? timeline.find((item) => item && item.conversationId)
+        : null;
+      if (found && found.conversationId) {
+        state.conversationId = String(found.conversationId);
+      }
+
+      return state.conversationId;
+    }
+
+    async function ensureConversationId(projectId, forceNew = false) {
+      if (!projectId) {
+        throw new Error("Selecciona proyecto antes de operar chat");
+      }
+
+      if (!forceNew && state.conversationId) {
+        return state.conversationId;
+      }
+
+      if (!forceNew) {
+        const existing = await discoverConversationId(projectId);
+        if (existing) {
+          setConversationInfo("Conversacion activa: " + existing + " (descubierta)");
+          return existing;
+        }
+      }
+
+      const conversation = await api("/v1/chat/conversations", {
+        method: "POST",
+        body: JSON.stringify({
+          title: "Chat " + projectLabel(projectId),
+          projectId
+        })
+      });
+
+      state.conversationId = String(conversation.id);
+      setConversationInfo("Conversacion activa: " + state.conversationId + " (creada ahora)");
+      return state.conversationId;
+    }
+
     async function loadProjects() {
       const projects = await api("/v1/projects");
       const select = q("activeProject");
@@ -307,6 +431,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
         select.value = state.projectId;
       }
 
+      setConversationInfo(state.projectId ? "Conversacion: pendiente de carga" : "Conversacion: selecciona proyecto");
       return projects;
     }
 
@@ -324,6 +449,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
         });
         q("projectName").value = "";
         state.projectId = String(project.id);
+        state.conversationId = "";
         await loadProjects();
         status("Proyecto creado y seleccionado.", "ok");
       } catch (error) {
@@ -425,24 +551,143 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     }
 
     async function loadTimeline() {
-      const projectId = q("activeProject").value || state.projectId;
+      const projectId = activeProjectId();
       if (!projectId) {
-        setTableRows("timelineBody", "", 3, "Selecciona proyecto");
-        return;
+        setTableRows("timelineBody", "", 4, "Selecciona proyecto");
+        return [];
       }
       const timeline = await api("/v1/chat/timeline?projectId=" + encodeURIComponent(projectId) + "&limit=10");
+      if (!state.conversationId && Array.isArray(timeline) && timeline.length > 0 && timeline[0]?.conversationId) {
+        state.conversationId = String(timeline[0].conversationId);
+        setConversationInfo("Conversacion activa: " + state.conversationId + " (timeline)");
+      }
       const html = (timeline || []).map((item) =>
         '<tr>' +
           '<td class="mono">' + esc(item.timestamp) + '</td>' +
+          '<td class="mono">' + esc(item.conversationTitle || item.conversationId) + '</td>' +
           '<td>' + esc(item.role) + '</td>' +
           '<td>' + esc(item.content) + '</td>' +
         '</tr>'
       ).join("");
-      setTableRows("timelineBody", html, 3, "Sin mensajes del proyecto");
+      setTableRows("timelineBody", html, 4, "Sin mensajes del proyecto");
+      return timeline;
+    }
+
+    async function loadConversationMessages(timeline = []) {
+      const projectId = activeProjectId();
+      if (!projectId) {
+        state.conversationId = "";
+        setConversationInfo("Conversacion: selecciona proyecto");
+        setTableRows("messagesBody", "", 3, "Selecciona proyecto");
+        return;
+      }
+
+      if (!state.conversationId && Array.isArray(timeline) && timeline.length > 0 && timeline[0]?.conversationId) {
+        state.conversationId = String(timeline[0].conversationId);
+      }
+
+      if (!state.conversationId) {
+        setConversationInfo("Sin conversacion. Envia mensaje o crea una nueva.");
+        setTableRows("messagesBody", "", 3, "Sin conversacion para este proyecto");
+        return;
+      }
+
+      try {
+        const messages = await api("/v1/chat/conversations/" + encodeURIComponent(state.conversationId) + "/messages");
+        const html = (messages || []).slice(-15).map((message) =>
+          '<tr>' +
+            '<td class="mono">' + esc(message.createdAt) + '</td>' +
+            '<td>' + esc(message.role) + '</td>' +
+            '<td>' + esc(message.content) + '</td>' +
+          '</tr>'
+        ).join("");
+        setConversationInfo("Conversacion activa: " + state.conversationId);
+        setTableRows("messagesBody", html, 3, "Sin mensajes en la conversacion");
+      } catch (error) {
+        if (error && error.status === 403) {
+          state.conversationId = "";
+          setConversationInfo("Sin acceso a la conversacion previa. Crea una nueva.");
+          setTableRows("messagesBody", "", 3, "Sin acceso a la conversacion actual");
+          return;
+        }
+        throw error;
+      }
+    }
+
+    async function sendChatMessage(event) {
+      event.preventDefault();
+      const projectId = activeProjectId();
+      const roleValue = q("chatRole").value || "user";
+      const content = q("chatContent").value.trim();
+
+      if (!projectId) {
+        status("Selecciona proyecto antes de enviar mensaje.", "error");
+        return;
+      }
+
+      if (!content) {
+        status("Escribe un mensaje antes de enviar.", "error");
+        return;
+      }
+
+      status("Enviando mensaje al chat...", "");
+
+      try {
+        let conversationId = await ensureConversationId(projectId, false);
+        try {
+          await api("/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+            method: "POST",
+            body: JSON.stringify({
+              role: roleValue,
+              content,
+              actorType: "user",
+              actorId: state.actorId
+            })
+          });
+        } catch (error) {
+          if (!(error && error.status === 403)) {
+            throw error;
+          }
+
+          conversationId = await ensureConversationId(projectId, true);
+          await api("/v1/chat/conversations/" + encodeURIComponent(conversationId) + "/messages", {
+            method: "POST",
+            body: JSON.stringify({
+              role: roleValue,
+              content,
+              actorType: "user",
+              actorId: state.actorId
+            })
+          });
+        }
+
+        q("chatContent").value = "";
+        status("Mensaje enviado al chat del proyecto.", "ok");
+        await loadEvidence();
+      } catch (error) {
+        status("Error enviando mensaje: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    async function createConversationManually() {
+      const projectId = activeProjectId();
+      if (!projectId) {
+        status("Selecciona proyecto antes de crear conversacion.", "error");
+        return;
+      }
+
+      status("Creando conversacion...", "");
+      try {
+        await ensureConversationId(projectId, true);
+        await loadConversationMessages();
+        status("Conversacion creada y activa.", "ok");
+      } catch (error) {
+        status("Error creando conversacion: " + (error.message || "fallo"), "error");
+      }
     }
 
     async function loadMemory() {
-      const projectId = q("activeProject").value || state.projectId;
+      const projectId = activeProjectId();
       if (!projectId) {
         setTableRows("memoryBody", "", 4, "Selecciona proyecto");
         return;
@@ -461,7 +706,10 @@ function renderOperationalDashboardHtml(token: string, role: string) {
 
     async function loadEvidence() {
       try {
-        await Promise.all([loadRuns(), loadTimeline(), loadMemory()]);
+        const timelinePromise = loadTimeline();
+        await Promise.all([loadRuns(), loadMemory()]);
+        const timeline = await timelinePromise;
+        await loadConversationMessages(timeline);
       } catch (error) {
         if (error && error.status === 401) {
           status("Unauthorized: vuelve a /login.", "error");
@@ -474,7 +722,18 @@ function renderOperationalDashboardHtml(token: string, role: string) {
     q("projectForm").addEventListener("submit", createProject);
     q("taskForm").addEventListener("submit", createTask);
     q("ruleForm").addEventListener("submit", createRule);
+    q("chatSendForm").addEventListener("submit", sendChatMessage);
     q("bootstrapBtn").addEventListener("click", bootstrapFlow);
+    q("refreshChat").addEventListener("click", async () => {
+      try {
+        const timeline = await loadTimeline();
+        await loadConversationMessages(timeline);
+        status("Chat actualizado.", "ok");
+      } catch (error) {
+        status("Error actualizando chat: " + (error.message || "fallo"), "error");
+      }
+    });
+    q("createConversationBtn").addEventListener("click", createConversationManually);
     q("refreshProjects").addEventListener("click", async () => {
       try {
         await loadProjects();
@@ -487,6 +746,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
       const target = event.target;
       if (!(target instanceof HTMLSelectElement)) return;
       state.projectId = target.value || "";
+      state.conversationId = "";
       loadEvidence();
     });
     q("refreshEvidence").addEventListener("click", loadEvidence);
@@ -495,6 +755,7 @@ function renderOperationalDashboardHtml(token: string, role: string) {
 
     (async () => {
       try {
+        await loadViewerIdentity();
         await loadProjects();
         await loadEvidence();
       } catch (error) {
