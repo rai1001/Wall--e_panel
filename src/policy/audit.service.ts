@@ -73,6 +73,35 @@ export class AuditService {
         : {})
     }));
   }
+
+  aggregateByActorAndAction(options: { from?: string; to?: string; limit?: number } = {}) {
+    const limit = options.limit && options.limit > 0 ? Math.min(options.limit, 1000) : 100;
+    const rows = this.connection
+      .prepare(
+        `SELECT actor_id, role, action, resource, COUNT(1) as count
+         FROM audits
+         WHERE (? IS NULL OR timestamp >= ?)
+           AND (? IS NULL OR timestamp <= ?)
+         GROUP BY actor_id, role, action, resource
+         ORDER BY count DESC
+         LIMIT ?`
+      )
+      .all(options.from ?? null, options.from ?? null, options.to ?? null, options.to ?? null, limit) as Array<{
+      actor_id: string;
+      role: Role;
+      action: string;
+      resource: string;
+      count: number;
+    }>;
+
+    return rows.map((row) => ({
+      actorId: row.actor_id,
+      role: row.role,
+      action: row.action,
+      resource: row.resource,
+      count: row.count
+    }));
+  }
 }
 
 export function auditSensitiveAction(

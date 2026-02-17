@@ -120,7 +120,11 @@ export class ChatService {
     });
   }
 
-  async sendMessage(conversationId: string, input: SendMessageInput) {
+  async sendMessage(
+    conversationId: string,
+    input: SendMessageInput,
+    meta: { correlationId?: string } = {}
+  ) {
     this.getConversationById(conversationId);
     const content = input.content?.trim();
     if (!content) {
@@ -169,7 +173,8 @@ export class ChatService {
         conversationId: message.conversationId,
         role: message.role
       },
-      occurredAt: new Date().toISOString()
+      occurredAt: new Date().toISOString(),
+      ...(meta.correlationId ? { correlationId: meta.correlationId } : {})
     };
 
     await this.eventBus.publish(event);

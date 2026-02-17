@@ -4,6 +4,7 @@ export interface DomainEvent<TPayload extends Record<string, unknown> = Record<s
   type: DomainEventType;
   payload: TPayload;
   occurredAt: string;
+  correlationId?: string;
 }
 
 type EventHandler = (event: DomainEvent) => void | Promise<void>;

@@ -6,11 +6,17 @@ import { createAppContext, AppContext } from "./context";
 import { createChatRouter } from "./chat/chat.router";
 import { createMemoryRouter } from "./memory/memory.router";
 import { createOnboardingRouter } from "./onboarding/onboarding.router";
+import { createOpsRouter } from "./ops/ops.router";
 import { createPolicyRouter } from "./policy/policy.router";
 import { createProjectRouter } from "./project/project.router";
 import { createAttachActor, requireAuthenticated } from "./policy/middleware";
 import { AppError } from "./shared/http/errors";
 import { createAuthRouter } from "./policy/auth.router";
+import { attachCorrelationId } from "./shared/http/correlation";
+import { deprecationHeaders } from "./shared/http/deprecation";
+import { createRateLimitMiddleware } from "./shared/http/rate-limit";
+import { createRequestMetricsMiddleware } from "./ops/request-metrics.middleware";
+import { createDashboardRouter } from "./ui/dashboard.router";
 
 function readOpenApiSpec() {
   const filePath = path.join(process.cwd(), "docs", "openapi.yaml");
@@ -20,10 +26,70 @@ function readOpenApiSpec() {
   return "openapi: 3.0.0\ninfo:\n  title: Asistente API\n  version: 0.1.0\npaths: {}\n";
 }
 
+function mountDomainRouters(router: express.Router, context: AppContext) {
+  router.use("/auth", createAuthRouter(context.authService, context.rateLimiter));
+  router.use("/chat", requireAuthenticated, createChatRouter(context.chatService));
+  router.use("/projects", requireAuthenticated, createProjectRouter(context.projectService));
+  router.use(
+    "/memory",
+    requireAuthenticated,
+    createMemoryRouter(context.memoryService, context.auditService)
+  );
+  router.use(
+    "/automation",
+    requireAuthenticated,
+    createAutomationRouter(
+      context.automationService,
+      context.auditService,
+      context.approvalService,
+      context.rateLimiter
+    )
+  );
+  router.use(
+    "/policy",
+    requireAuthenticated,
+    createPolicyRouter(context.approvalService, context.auditService)
+  );
+  router.use(
+    "/onboarding",
+    requireAuthenticated,
+    createOnboardingRouter(context.projectService, context.chatService, context.automationService)
+  );
+  router.use(
+    "/ops",
+    requireAuthenticated,
+    createOpsRouter(
+      context.metricsService,
+      context.memoryService,
+      context.automationService,
+      context.auditService
+    )
+  );
+  router.use(
+    "/dashboard",
+    requireAuthenticated,
+    createDashboardRouter(
+      context.metricsService,
+      context.auditService,
+      context.approvalService,
+      context.memoryService
+    )
+  );
+}
+
 export function createApp(context: AppContext = createAppContext()) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: "1mb" }));
+  app.use(attachCorrelationId);
   app.use(createAttachActor(context.authService));
+  app.use(createRequestMetricsMiddleware(context.metricsService));
+  app.use(
+    createRateLimitMiddleware(context.rateLimiter, {
+      keyPrefix: "global",
+      max: 600,
+      windowMs: 60_000
+    })
+  );
 
   app.get("/health", (_req, res) => {
     res.status(200).json({ status: "ok" });
@@ -33,26 +99,19 @@ export function createApp(context: AppContext = createAppContext()) {
     res.type("application/yaml").send(readOpenApiSpec());
   });
 
-  app.use("/auth", createAuthRouter(context.authService));
+  const v1 = express.Router();
+  mountDomainRouters(v1, context);
+  app.use("/v1", v1);
 
-  app.use("/chat", requireAuthenticated, createChatRouter(context.chatService));
-  app.use("/projects", requireAuthenticated, createProjectRouter(context.projectService));
-  app.use("/memory", requireAuthenticated, createMemoryRouter(context.memoryService));
-  app.use(
-    "/automation",
-    requireAuthenticated,
-    createAutomationRouter(context.automationService, context.auditService, context.approvalService)
+  const legacy = express.Router();
+  legacy.use(
+    deprecationHeaders({
+      sunset: "Wed, 30 Sep 2026 00:00:00 GMT",
+      link: "/v1"
+    })
   );
-  app.use(
-    "/policy",
-    requireAuthenticated,
-    createPolicyRouter(context.approvalService, context.auditService)
-  );
-  app.use(
-    "/onboarding",
-    requireAuthenticated,
-    createOnboardingRouter(context.projectService, context.chatService, context.automationService)
-  );
+  mountDomainRouters(legacy, context);
+  app.use("/", legacy);
 
   app.use(
     (

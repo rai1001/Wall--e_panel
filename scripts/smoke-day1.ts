@@ -3,7 +3,7 @@ import { createApp } from "../src/app";
 
 async function login(app: ReturnType<typeof createApp>) {
   const auth = await request(app)
-    .post("/auth/login")
+    .post("/v1/auth/login")
     .send({ email: "admin@local", password: "admin123" });
   if (auth.status !== 200) {
     throw new Error(`No se pudo autenticar smoke admin: ${auth.status}`);
@@ -15,7 +15,7 @@ async function run() {
   const app = createApp();
   const adminToken = await login(app);
   const viewerAuth = await request(app)
-    .post("/auth/login")
+    .post("/v1/auth/login")
     .send({ email: "viewer@local", password: "viewer123" });
   if (viewerAuth.status !== 200) {
     throw new Error(`No se pudo autenticar smoke viewer: ${viewerAuth.status}`);
@@ -25,7 +25,7 @@ async function run() {
   const viewerHeaders = { authorization: `Bearer ${viewerToken}` };
 
   const project = await request(app)
-    .post("/projects")
+    .post("/v1/projects")
     .set(adminHeaders)
     .send({ name: "Smoke Project" });
 
@@ -36,7 +36,7 @@ async function run() {
   const projectId = String(project.body.id);
 
   const conversation = await request(app)
-    .post("/chat/conversations")
+    .post("/v1/chat/conversations")
     .set(adminHeaders)
     .send({ title: "Smoke Conversation", projectId });
 
@@ -47,7 +47,7 @@ async function run() {
   const conversationId = String(conversation.body.id);
 
   const rule = await request(app)
-    .post("/automation/rules")
+    .post("/v1/automation/rules")
     .set(adminHeaders)
     .send({
       name: "Smoke Task Rule",
@@ -60,7 +60,7 @@ async function run() {
   }
 
   const task = await request(app)
-    .post(`/projects/${projectId}/tasks`)
+    .post(`/v1/projects/${projectId}/tasks`)
     .set(adminHeaders)
     .send({ title: "Smoke task" });
 
@@ -69,10 +69,10 @@ async function run() {
   }
 
   const messages = await request(app)
-    .get(`/chat/conversations/${conversationId}/messages`)
+    .get(`/v1/chat/conversations/${conversationId}/messages`)
     .set(viewerHeaders);
   const memory = await request(app)
-    .get("/memory/search?tags=automation")
+    .get("/v1/memory/search?tags=automation")
     .set(viewerHeaders);
 
   if (messages.status !== 200 || messages.body.length < 1) {

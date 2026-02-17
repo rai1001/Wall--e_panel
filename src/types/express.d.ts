@@ -6,6 +6,7 @@ declare global {
       role: Role;
       actorId: string;
       userId?: string;
+      correlationId: string;
     }
   }
 }

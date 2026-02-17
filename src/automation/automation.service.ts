@@ -1,16 +1,20 @@
 import { createHash } from "node:crypto";
+import cron, { ScheduledTask } from "node-cron";
 import { Database } from "better-sqlite3";
 import { ChatService } from "../chat/chat.service";
 import { MemoryService } from "../memory/memory.service";
+import { MetricsService } from "../ops/metrics.service";
 import { DomainEvent, EventBus } from "../shared/events/event-bus";
 import { AppError, NotFoundError } from "../shared/http/errors";
 import { createId } from "../shared/id";
 import {
   Action,
   AutomationRule,
+  DeadLetter,
   DomainEventType,
   RunLog,
-  Trigger
+  Trigger,
+  TriggerCondition
 } from "../types/domain";
 
 export interface CreateRuleInput {
@@ -23,6 +27,7 @@ export interface CreateRuleInput {
 export interface TestRuleInput {
   eventType?: DomainEventType;
   eventPayload?: Record<string, unknown>;
+  correlationId?: string;
 }
 
 interface RuleRow {
@@ -30,6 +35,9 @@ interface RuleRow {
   name: string;
   trigger_type: DomainEventType;
   trigger_filter_json: string | null;
+  trigger_mode: "AND" | "OR" | null;
+  trigger_conditions_json: string | null;
+  trigger_cron: string | null;
   actions_json: string;
   enabled: number;
 }
@@ -38,6 +46,7 @@ interface RunLogRow {
   id: string;
   rule_id: string;
   event_key: string;
+  correlation_id: string | null;
   status: "success" | "failed";
   output: string;
   attempts: number;
@@ -45,14 +54,26 @@ interface RunLogRow {
   finished_at: string;
 }
 
+interface DeadLetterRow {
+  id: string;
+  rule_id: string;
+  event_key: string;
+  reason: string;
+  payload_json: string;
+  correlation_id: string | null;
+  created_at: string;
+}
+
 export class AutomationService {
   private started = false;
+  private readonly scheduledTasks = new Map<string, ScheduledTask>();
 
   constructor(
     private readonly eventBus: EventBus,
     private readonly chatService: ChatService,
     private readonly memoryService: MemoryService,
-    private readonly connection: Database
+    private readonly connection: Database,
+    private readonly metricsService: MetricsService
   ) {}
 
   start() {
@@ -67,6 +88,8 @@ export class AutomationService {
     this.eventBus.subscribe("task_status_changed", async (event) => {
       await this.handleEvent(event);
     });
+
+    this.scheduleCronRules();
   }
 
   createRule(input: CreateRuleInput) {
@@ -76,6 +99,11 @@ export class AutomationService {
     }
     if (!Array.isArray(input.actions) || input.actions.length === 0) {
       throw new AppError("actions debe contener al menos una accion", 400);
+    }
+    if (input.trigger.type === "scheduled_tick") {
+      if (!input.trigger.cron || !cron.validate(input.trigger.cron)) {
+        throw new AppError("Reglas scheduled_tick requieren trigger.cron valido", 422);
+      }
     }
 
     const rule: AutomationRule = {
@@ -88,17 +116,25 @@ export class AutomationService {
 
     this.connection
       .prepare(
-        `INSERT INTO automation_rules (id, name, trigger_type, trigger_filter_json, actions_json, enabled)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO automation_rules (
+          id, name, trigger_type, trigger_filter_json, trigger_mode, trigger_conditions_json, trigger_cron, actions_json, enabled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         rule.id,
         rule.name,
         rule.trigger.type,
         rule.trigger.filter ? JSON.stringify(rule.trigger.filter) : null,
+        rule.trigger.mode ?? null,
+        rule.trigger.conditions ? JSON.stringify(rule.trigger.conditions) : null,
+        rule.trigger.cron ?? null,
         JSON.stringify(rule.actions),
         rule.enabled ? 1 : 0
       );
+
+    if (rule.enabled) {
+      this.scheduleRule(rule);
+    }
 
     return rule;
   }
@@ -106,7 +142,7 @@ export class AutomationService {
   listRules() {
     const rows = this.connection
       .prepare(
-        `SELECT id, name, trigger_type, trigger_filter_json, actions_json, enabled
+        `SELECT id, name, trigger_type, trigger_filter_json, trigger_mode, trigger_conditions_json, trigger_cron, actions_json, enabled
          FROM automation_rules
          ORDER BY id DESC`
       )
@@ -117,7 +153,7 @@ export class AutomationService {
   listRunLogs() {
     const rows = this.connection
       .prepare(
-        `SELECT id, rule_id, event_key, status, output, attempts, started_at, finished_at
+        `SELECT id, rule_id, event_key, correlation_id, status, output, attempts, started_at, finished_at
          FROM run_logs
          ORDER BY started_at DESC`
       )
@@ -125,10 +161,65 @@ export class AutomationService {
     return rows.map((row) => this.mapRunLog(row));
   }
 
+  listDeadLetters() {
+    const rows = this.connection
+      .prepare(
+        `SELECT id, rule_id, event_key, reason, payload_json, correlation_id, created_at
+         FROM dead_letters
+         ORDER BY created_at DESC`
+      )
+      .all() as DeadLetterRow[];
+
+    return rows.map((row) => this.mapDeadLetter(row));
+  }
+
+  healthSummary(options: { from?: string; to?: string } = {}) {
+    const rows = this.connection
+      .prepare(
+        `SELECT id, rule_id, event_key, correlation_id, status, output, attempts, started_at, finished_at
+         FROM run_logs
+         WHERE (? IS NULL OR started_at >= ?)
+           AND (? IS NULL OR started_at <= ?)
+         ORDER BY started_at DESC`
+      )
+      .all(options.from ?? null, options.from ?? null, options.to ?? null, options.to ?? null) as RunLogRow[];
+
+    const totalRuns = rows.length;
+    const failedRuns = rows.filter((row) => row.status === "failed").length;
+    const retries = rows.reduce((acc, row) => acc + Math.max(0, row.attempts - 1), 0);
+
+    const latencies = rows.map((row) => {
+      const start = new Date(row.started_at).getTime();
+      const end = new Date(row.finished_at).getTime();
+      if (Number.isNaN(start) || Number.isNaN(end) || end < start) {
+        return 0;
+      }
+      return end - start;
+    });
+
+    const avgLatencyMs =
+      latencies.length > 0
+        ? Number((latencies.reduce((acc, value) => acc + value, 0) / latencies.length).toFixed(2))
+        : 0;
+    const sorted = [...latencies].sort((a, b) => a - b);
+    const p95Index = Math.max(0, Math.ceil(sorted.length * 0.95) - 1);
+    const p95LatencyMs = Number((sorted[p95Index] ?? 0).toFixed(2));
+
+    return {
+      totalRuns,
+      okRuns: totalRuns - failedRuns,
+      failedRuns,
+      retries,
+      avgLatencyMs,
+      p95LatencyMs,
+      recentDeadLetters: this.listDeadLetters().slice(0, 10)
+    };
+  }
+
   getRuleById(ruleId: string) {
     const row = this.connection
       .prepare(
-        `SELECT id, name, trigger_type, trigger_filter_json, actions_json, enabled
+        `SELECT id, name, trigger_type, trigger_filter_json, trigger_mode, trigger_conditions_json, trigger_cron, actions_json, enabled
          FROM automation_rules
          WHERE id = ?`
       )
@@ -145,7 +236,8 @@ export class AutomationService {
     const event: DomainEvent = {
       type: input.eventType ?? rule.trigger.type,
       payload: input.eventPayload ?? {},
-      occurredAt: new Date().toISOString()
+      occurredAt: new Date().toISOString(),
+      ...(input.correlationId ? { correlationId: input.correlationId } : {})
     };
 
     await this.executeRule(rule, event, `${this.buildEventKey(rule, event)}:manual_test`);
@@ -169,22 +261,101 @@ export class AutomationService {
     }
   }
 
+  private scheduleCronRules() {
+    const rules = this.listRules().filter((rule) => rule.enabled);
+    for (const rule of rules) {
+      this.scheduleRule(rule);
+    }
+  }
+
+  private scheduleRule(rule: AutomationRule) {
+    if (rule.trigger.type !== "scheduled_tick" || !rule.trigger.cron) {
+      return;
+    }
+
+    const existing = this.scheduledTasks.get(rule.id);
+    if (existing) {
+      existing.stop();
+      this.scheduledTasks.delete(rule.id);
+    }
+
+    if (!cron.validate(rule.trigger.cron)) {
+      return;
+    }
+
+    const task = cron.schedule(rule.trigger.cron, async () => {
+      const event: DomainEvent = {
+        type: "scheduled_tick",
+        payload: {
+          ruleId: rule.id,
+          tickAt: new Date().toISOString()
+        },
+        occurredAt: new Date().toISOString(),
+        correlationId: createId("corr")
+      };
+
+      const eventKey = this.buildEventKey(rule, event);
+      if (this.isAlreadyProcessed(eventKey)) {
+        return;
+      }
+
+      await this.executeRule(rule, event, eventKey);
+      this.markAsProcessed(eventKey);
+    });
+
+    this.scheduledTasks.set(rule.id, task);
+  }
+
   private matches(rule: AutomationRule, event: DomainEvent) {
     if (rule.trigger.type !== event.type) {
       return false;
     }
 
-    if (!rule.trigger.filter) {
+    const conditions: TriggerCondition[] = [];
+    if (rule.trigger.filter) {
+      for (const [field, value] of Object.entries(rule.trigger.filter)) {
+        conditions.push({ field, operator: "eq", value });
+      }
+    }
+    for (const item of rule.trigger.conditions ?? []) {
+      conditions.push(item);
+    }
+
+    if (conditions.length === 0) {
       return true;
     }
 
-    for (const [key, value] of Object.entries(rule.trigger.filter)) {
-      if (String(event.payload[key]) !== value) {
-        return false;
-      }
-    }
+    const mode = rule.trigger.mode ?? "AND";
+    const evaluated = conditions.map((condition) => this.evaluateCondition(condition, event.payload));
+    return mode === "OR" ? evaluated.some(Boolean) : evaluated.every(Boolean);
+  }
 
-    return true;
+  private evaluateCondition(condition: TriggerCondition, payload: Record<string, unknown>) {
+    const actual = payload[condition.field];
+    const expected = condition.value;
+
+    switch (condition.operator) {
+      case "eq":
+        return String(actual) === String(expected);
+      case "neq":
+        return String(actual) !== String(expected);
+      case "contains":
+        return String(actual ?? "").includes(String(expected));
+      case "starts_with":
+        return String(actual ?? "").startsWith(String(expected));
+      case "ends_with":
+        return String(actual ?? "").endsWith(String(expected));
+      case "gt":
+        return Number(actual) > Number(expected);
+      case "gte":
+        return Number(actual) >= Number(expected);
+      case "lt":
+        return Number(actual) < Number(expected);
+      case "lte":
+        return Number(actual) <= Number(expected);
+      default:
+        return false;
+    }
   }
 
   private async executeRule(rule: AutomationRule, event: DomainEvent, eventKey: string) {
@@ -225,24 +396,32 @@ export class AutomationService {
       output,
       attempts,
       startedAt,
-      finishedAt: new Date().toISOString()
+      finishedAt: new Date().toISOString(),
+      ...(event.correlationId ? { correlationId: event.correlationId } : {})
     };
 
     this.connection
       .prepare(
-        `INSERT INTO run_logs (id, rule_id, event_key, status, output, attempts, started_at, finished_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO run_logs (id, rule_id, event_key, correlation_id, status, output, attempts, started_at, finished_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         runLog.id,
         runLog.ruleId,
         runLog.eventKey ?? "",
+        runLog.correlationId ?? null,
         runLog.status,
         runLog.output,
         runLog.attempts ?? 0,
         runLog.startedAt,
         runLog.finishedAt
       );
+
+    this.metricsService.recordAutomationRun(runLog.status, runLog.attempts ?? 1);
+
+    if (runLog.status === "failed") {
+      this.pushDeadLetter(rule, eventKey, runLog.output, event);
+    }
 
     await this.eventBus.publish({
       type: "automation_rule_executed",
@@ -252,7 +431,8 @@ export class AutomationService {
         status: runLog.status,
         eventKey
       },
-      occurredAt: new Date().toISOString()
+      occurredAt: new Date().toISOString(),
+      ...(event.correlationId ? { correlationId: event.correlationId } : {})
     });
   }
 
@@ -297,12 +477,16 @@ export class AutomationService {
           throw new Error("Simulated transient error in post_chat_message");
         }
 
-        await this.chatService.sendMessage(conversationId, {
-          role: "system",
-          content,
-          actorType: "system",
-          actorId: "automation-engine"
-        });
+        await this.chatService.sendMessage(
+          conversationId,
+          {
+            role: "system",
+            content,
+            actorType: "system",
+            actorId: "automation-engine"
+          },
+          event.correlationId ? { correlationId: event.correlationId } : {}
+        );
         return;
       }
       case "save_memory": {
@@ -316,26 +500,61 @@ export class AutomationService {
           throw new Error("Simulated transient error in save_memory");
         }
 
-        await this.memoryService.save({
-          scope: this.readString(payload.scope) ?? (projectId ? "project" : "global"),
-          content:
-            this.readString(payload.content) ??
-            `Automatizacion ${rule.name} ejecutada por ${event.type}`,
-          source: this.readString(payload.source) ?? `automation:${rule.id}`,
-          tags: tagsFromPayload.length > 0 ? tagsFromPayload : ["automation", event.type]
-        });
+        await this.memoryService.save(
+          {
+            scope: this.readString(payload.scope) ?? (projectId ? "project" : "global"),
+            content:
+              this.readString(payload.content) ??
+              `Automatizacion ${rule.name} ejecutada por ${event.type}`,
+            source: this.readString(payload.source) ?? `automation:${rule.id}`,
+            tags: tagsFromPayload.length > 0 ? tagsFromPayload : ["automation", event.type]
+          },
+          event.correlationId ? { correlationId: event.correlationId } : {}
+        );
         return;
       }
       case "external_action":
       case "shell_execution":
       case "mass_messaging":
       case "remote_action":
-        throw new Error(`Accion sensible ${action.type} requiere integracion externa (Day 3+)`);
+        throw new Error(`Accion sensible ${action.type} requiere integracion externa (Day 4+)`);
       default: {
         const exhaustive: never = action.type;
         throw new Error(`Tipo de accion no soportado: ${String(exhaustive)}`);
       }
     }
+  }
+
+  private pushDeadLetter(
+    rule: AutomationRule,
+    eventKey: string,
+    reason: string,
+    event: DomainEvent
+  ) {
+    const deadLetter: DeadLetter = {
+      id: createId("dlq"),
+      ruleId: rule.id,
+      eventKey,
+      reason,
+      payload: event.payload,
+      createdAt: new Date().toISOString(),
+      ...(event.correlationId ? { correlationId: event.correlationId } : {})
+    };
+
+    this.connection
+      .prepare(
+        `INSERT INTO dead_letters (id, rule_id, event_key, reason, payload_json, correlation_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        deadLetter.id,
+        deadLetter.ruleId,
+        deadLetter.eventKey,
+        deadLetter.reason,
+        JSON.stringify(deadLetter.payload),
+        deadLetter.correlationId ?? null,
+        deadLetter.createdAt
+      );
   }
 
   private buildEventKey(rule: AutomationRule, event: DomainEvent) {
@@ -374,7 +593,12 @@ export class AutomationService {
         type: row.trigger_type,
         ...(row.trigger_filter_json
           ? { filter: JSON.parse(row.trigger_filter_json) as Record<string, string> }
-          : {})
+          : {}),
+        ...(row.trigger_mode ? { mode: row.trigger_mode } : {}),
+        ...(row.trigger_conditions_json
+          ? { conditions: JSON.parse(row.trigger_conditions_json) as TriggerCondition[] }
+          : {}),
+        ...(row.trigger_cron ? { cron: row.trigger_cron } : {})
       },
       actions: JSON.parse(row.actions_json) as Action[],
       enabled: row.enabled === 1
@@ -390,7 +614,20 @@ export class AutomationService {
       output: row.output,
       attempts: row.attempts,
       startedAt: row.started_at,
-      finishedAt: row.finished_at
+      finishedAt: row.finished_at,
+      ...(row.correlation_id ? { correlationId: row.correlation_id } : {})
+    };
+  }
+
+  private mapDeadLetter(row: DeadLetterRow): DeadLetter {
+    return {
+      id: row.id,
+      ruleId: row.rule_id,
+      eventKey: row.event_key,
+      reason: row.reason,
+      payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+      ...(row.correlation_id ? { correlationId: row.correlation_id } : {})
     };
   }
 

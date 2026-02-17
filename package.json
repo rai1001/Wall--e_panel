@@ -12,7 +12,11 @@
     "test:watch": "vitest",
     "smoke": "tsx scripts/smoke-day1.ts",
     "typecheck": "tsc --noEmit",
-    "ci": "npm run typecheck && npm test && npm run smoke"
+    "ci": "npm run typecheck && npm test && npm run smoke",
+    "backup": "tsx scripts/db-backup.ts",
+    "restore": "tsx scripts/db-restore.ts",
+    "reindex": "tsx scripts/reindex-memory.ts",
+    "reset:local": "tsx scripts/reset-local.ts"
   },
   "keywords": [
     "assistant",
@@ -26,7 +30,9 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3"
+    "jsonwebtoken": "^9.0.3",
+    "node-cron": "^4.2.1",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

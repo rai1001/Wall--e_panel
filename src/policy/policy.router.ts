@@ -1,9 +1,23 @@
 import { Router } from "express";
+import { z } from "zod";
 import { ApprovalService } from "./approval.service";
 import { AuditService } from "./audit.service";
 import { requirePermission } from "./middleware";
 import { asyncHandler } from "../shared/http/async-handler";
 import { AppError, ForbiddenError } from "../shared/http/errors";
+import { validateParams, validateQuery } from "../shared/http/validation";
+
+const approvalStatusQuerySchema = z.object({
+  status: z.enum(["pending", "approved", "rejected"]).optional()
+});
+
+const auditQuerySchema = z.object({
+  limit: z.coerce.number().int().positive().max(500).optional()
+});
+
+const approvalParamSchema = z.object({
+  id: z.string().min(1)
+});
 
 function ensureApprovalManager(role: string) {
   if (role !== "admin" && role !== "manager") {
@@ -17,6 +31,7 @@ export function createPolicyRouter(approvalService: ApprovalService, auditServic
   router.get(
     "/approvals",
     requirePermission("read", "automatizacion"),
+    validateQuery(approvalStatusQuerySchema),
     asyncHandler(async (req, res) => {
       ensureApprovalManager(req.role);
       const status = req.query.status ? String(req.query.status) : undefined;
@@ -32,6 +47,7 @@ export function createPolicyRouter(approvalService: ApprovalService, auditServic
   router.post(
     "/approvals/:id/approve",
     requirePermission("execute", "automatizacion"),
+    validateParams(approvalParamSchema),
     asyncHandler(async (req, res) => {
       ensureApprovalManager(req.role);
       const approvalId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -45,7 +61,7 @@ export function createPolicyRouter(approvalService: ApprovalService, auditServic
         role: req.role,
         action: "approve_sensitive_action",
         resource: "automatizacion",
-        details: { approvalId }
+        details: { approvalId, correlationId: req.correlationId }
       });
 
       res.status(200).json(approved);
@@ -55,6 +71,7 @@ export function createPolicyRouter(approvalService: ApprovalService, auditServic
   router.post(
     "/approvals/:id/reject",
     requirePermission("execute", "automatizacion"),
+    validateParams(approvalParamSchema),
     asyncHandler(async (req, res) => {
       ensureApprovalManager(req.role);
       const approvalId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
@@ -68,7 +85,7 @@ export function createPolicyRouter(approvalService: ApprovalService, auditServic
         role: req.role,
         action: "reject_sensitive_action",
         resource: "automatizacion",
-        details: { approvalId }
+        details: { approvalId, correlationId: req.correlationId }
       });
 
       res.status(200).json(rejected);
@@ -78,6 +95,7 @@ export function createPolicyRouter(approvalService: ApprovalService, auditServic
   router.get(
     "/audit",
     requirePermission("read", "automatizacion"),
+    validateQuery(auditQuerySchema),
     asyncHandler(async (req, res) => {
       ensureApprovalManager(req.role);
       const limitRaw = req.query.limit ? Number(req.query.limit) : 50;

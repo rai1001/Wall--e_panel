@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../../src/app";
 
 async function login(app: ReturnType<typeof createApp>, email: string, password: string) {
-  const response = await request(app).post("/auth/login").send({ email, password });
+  const response = await request(app).post("/v1/auth/login").send({ email, password });
   expect(response.status).toBe(200);
   return response.body.token as string;
 }
@@ -17,21 +17,21 @@ describe("Day 1 integrated flow", () => {
     const viewerHeaders = { authorization: `Bearer ${viewerToken}` };
 
     const projectResponse = await request(app)
-      .post("/projects")
+      .post("/v1/projects")
       .set(adminHeaders)
       .send({ name: "Proyecto Integrado" });
     expect(projectResponse.status).toBe(201);
     const projectId = projectResponse.body.id as string;
 
     const conversationResponse = await request(app)
-      .post("/chat/conversations")
+      .post("/v1/chat/conversations")
       .set(adminHeaders)
       .send({ title: "Chat Proyecto Integrado", projectId });
     expect(conversationResponse.status).toBe(201);
     const conversationId = conversationResponse.body.id as string;
 
     const ruleResponse = await request(app)
-      .post("/automation/rules")
+      .post("/v1/automation/rules")
       .set(adminHeaders)
       .send({
         name: "TaskCreated -> Chat+Memory",
@@ -56,24 +56,24 @@ describe("Day 1 integrated flow", () => {
     expect(ruleResponse.status).toBe(201);
 
     const taskResponse = await request(app)
-      .post(`/projects/${projectId}/tasks`)
+      .post(`/v1/projects/${projectId}/tasks`)
       .set(adminHeaders)
       .send({ title: "Completar entrega Day 1" });
     expect(taskResponse.status).toBe(201);
 
     const messagesResponse = await request(app)
-      .get(`/chat/conversations/${conversationId}/messages`)
+      .get(`/v1/chat/conversations/${conversationId}/messages`)
       .set(viewerHeaders);
     expect(messagesResponse.status).toBe(200);
     expect(messagesResponse.body.some((message: { content: string }) => message.content.includes("Automatizacion: tarea creada"))).toBe(true);
 
     const memoryResponse = await request(app)
-      .get("/memory/search?scope=project&tags=automation,task_created")
+      .get("/v1/memory/search?scope=project&tags=automation,task_created")
       .set(viewerHeaders);
     expect(memoryResponse.status).toBe(200);
     expect(memoryResponse.body.length).toBeGreaterThanOrEqual(1);
 
-    const runsResponse = await request(app).get("/automation/runs").set(viewerHeaders);
+    const runsResponse = await request(app).get("/v1/automation/runs").set(viewerHeaders);
     expect(runsResponse.status).toBe(200);
     expect(runsResponse.body.length).toBeGreaterThanOrEqual(1);
     expect(runsResponse.body.at(-1)?.status).toBe("success");

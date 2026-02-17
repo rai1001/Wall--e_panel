@@ -143,7 +143,11 @@ export class ProjectService {
     return rows.map((row) => this.mapTask(row));
   }
 
-  async createTask(projectId: string, input: CreateTaskInput) {
+  async createTask(
+    projectId: string,
+    input: CreateTaskInput,
+    meta: { correlationId?: string } = {}
+  ) {
     this.getProjectById(projectId);
     const title = input.title?.trim();
     if (!title) {
@@ -184,14 +188,20 @@ export class ProjectService {
         taskTitle: task.title,
         taskStatus: task.status
       },
-      occurredAt: new Date().toISOString()
+      occurredAt: new Date().toISOString(),
+      ...(meta.correlationId ? { correlationId: meta.correlationId } : {})
     };
 
     await this.eventBus.publish(event);
     return task;
   }
 
-  async updateTaskStatus(projectId: string, taskId: string, status: TaskStatus) {
+  async updateTaskStatus(
+    projectId: string,
+    taskId: string,
+    status: TaskStatus,
+    meta: { correlationId?: string } = {}
+  ) {
     this.getProjectById(projectId);
     const existing = this.connection
       .prepare(
@@ -221,7 +231,8 @@ export class ProjectService {
         taskId,
         status
       },
-      occurredAt: new Date().toISOString()
+      occurredAt: new Date().toISOString(),
+      ...(meta.correlationId ? { correlationId: meta.correlationId } : {})
     };
 
     await this.eventBus.publish(event);
