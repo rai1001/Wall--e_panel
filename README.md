@@ -133,7 +133,8 @@ $env:FORCE_RESET='true'; npm run reset:local
 ```
 
 ### 5) Operations panel
-- `GET /v1/dashboard`
+- Open browser at `http://localhost:3000/login`
+- Login creates `oc_token` session cookie and redirects to `GET /v1/dashboard`
 
 Dashboard includes:
 - request/automation/memory metrics

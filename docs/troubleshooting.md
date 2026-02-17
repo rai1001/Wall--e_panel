@@ -104,3 +104,25 @@ Checks:
 Notes:
 - Current implementation falls back to local embeddings on remote errors.
 - Run `npm run reindex` after changing embedding provider/model to keep vectors consistent.
+
+## 7) `401 Se requiere autenticacion` in PowerShell
+
+Common causes:
+- `$token` is empty in current terminal session.
+- You pasted response lines (for example `HTTP/1.1 ...`) back into PowerShell.
+- Login was done against another process/env with different JWT secret.
+
+Safe flow (copy exactly):
+
+```powershell
+$body = @{ email = "rai@local"; password = "alborelle" } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "http://localhost:3000/v1/auth/login" -ContentType "application/json" -Body $body
+$token = $login.token
+$token.Length
+Invoke-RestMethod -Uri "http://localhost:3000/v1/auth/me" -Headers @{ Authorization = "Bearer $token" }
+Invoke-RestMethod -Uri "http://localhost:3000/v1/ops/memory/metrics" -Headers @{ Authorization = "Bearer $token" }
+```
+
+Browser access without manual headers:
+- Open `http://localhost:3000/login`
+- Login and continue to dashboard automatically.

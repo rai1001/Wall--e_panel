@@ -62,11 +62,14 @@ curl -X POST http://localhost:3000/v1/memory/hygiene/run \
 
 ## 5) Operacion panel
 
-Dashboard:
+Entrada recomendada:
 
 ```text
-GET /v1/dashboard
+GET /login
 ```
+
+Flujo:
+- `/login` -> `POST /v1/auth/login` -> set cookie `oc_token` -> redirect a `/v1/dashboard`
 
 Funciones:
 - filtros por proyecto/agente/fecha/scope/tipo
