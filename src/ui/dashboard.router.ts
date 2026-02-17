@@ -5,6 +5,511 @@ import { MemoryService } from "../memory/memory.service";
 import { MetricsService } from "../ops/metrics.service";
 import { asyncHandler } from "../shared/http/async-handler";
 
+function renderOperationalDashboardHtml(token: string, role: string) {
+  return `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenClaw Control Deck - Workboard</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: #121c2f;
+      --line: #24314d;
+      --text: #e8eefc;
+      --muted: #9aa9c9;
+      --ok: #1ec18b;
+      --bad: #ff6f6f;
+      --acc: #f9be4f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(180deg, #0a1220, #0d1628);
+      color: var(--text);
+    }
+    .wrap {
+      width: min(1200px, 100%);
+      margin: 0 auto;
+      padding: 16px;
+      display: grid;
+      gap: 12px;
+    }
+    .head {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      padding: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 4vw, 44px);
+      letter-spacing: -.03em;
+    }
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .links {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 12px;
+      background: #16233b;
+    }
+    .status {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      color: var(--muted);
+      background: #101a2d;
+      min-height: 44px;
+    }
+    .status.ok { border-color: #1f785f; color: #7de4bf; }
+    .status.error { border-color: #893939; color: #ffb3b3; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--card);
+      padding: 12px;
+    }
+    h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .row.single { grid-template-columns: 1fr auto; }
+    input, select, button {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #0f192c;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 13px;
+    }
+    button {
+      cursor: pointer;
+      background: #1a2946;
+      font-weight: 600;
+    }
+    button.primary {
+      background: linear-gradient(140deg, var(--acc), #efab29);
+      color: #261a00;
+      border-color: #f3b53c;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    th, td {
+      text-align: left;
+      padding: 6px 4px;
+      border-bottom: 1px dashed var(--line);
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-size: 11px; }
+    .mono { font-family: Consolas, monospace; font-size: 11px; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 1fr; }
+      .row.single { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="head">
+      <h1>OpenClaw Control Deck</h1>
+      <div class="sub">role: ${role} | flujo diario simple: proyecto -> tarea -> automatizacion -> evidencia</div>
+      <div class="links">
+        <span class="chip">Projects</span>
+        <span class="chip">Automations</span>
+        <span class="chip">Chat Timeline</span>
+        <span class="chip">Memory</span>
+        <span class="chip">Permissions</span>
+        <a class="chip" href="/v1/dashboard?classic=1">Modo clasico</a>
+      </div>
+    </section>
+
+    <div id="status" class="status">Listo para operar.</div>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Paso 1. Proyecto</h2>
+        <div class="hint">Crea o selecciona el proyecto activo.</div>
+        <form id="projectForm" class="row">
+          <input id="projectName" placeholder="Nombre proyecto" required minlength="3" />
+          <select id="projectStatus">
+            <option value="active">active</option>
+            <option value="paused">paused</option>
+            <option value="done">done</option>
+          </select>
+          <button class="primary" type="submit">Crear proyecto</button>
+        </form>
+        <div class="row single">
+          <select id="activeProject">
+            <option value="">Selecciona proyecto</option>
+          </select>
+          <button id="refreshProjects" type="button">Refrescar</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Paso 2. Tarea</h2>
+        <div class="hint">Crear tarea dispara reglas task_created.</div>
+        <form id="taskForm" class="row">
+          <input id="taskTitle" placeholder="Titulo tarea" required minlength="3" />
+          <select id="taskStatus">
+            <option value="todo">todo</option>
+            <option value="in_progress">in_progress</option>
+            <option value="done">done</option>
+          </select>
+          <button class="primary" type="submit">Crear tarea</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <h2>Paso 3. Automatizacion</h2>
+        <div class="hint">Crea regla basica task_created -> chat + memory.</div>
+        <form id="ruleForm" class="row">
+          <input id="ruleName" placeholder="Nombre regla" required minlength="3" />
+          <input id="ruleMessage" placeholder="Mensaje opcional" />
+          <button class="primary" type="submit">Crear regla</button>
+        </form>
+        <div class="row single">
+          <button id="bootstrapBtn" type="button">Crear flujo base (admin)</button>
+          <button id="openLoginBtn" type="button">Re-login</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Paso 4. Evidencia</h2>
+        <div class="hint">Verifica runs, timeline y memoria del proyecto activo.</div>
+        <div class="row single">
+          <button id="refreshEvidence" class="primary" type="button">Actualizar evidencia</button>
+          <button id="refreshRuns" type="button">Solo runs</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Runs recientes</h2>
+        <table>
+          <thead><tr><th>Rule</th><th>Status</th><th>Attempts</th></tr></thead>
+          <tbody id="runsBody"><tr><td colspan="3">Sin datos</td></tr></tbody>
+        </table>
+      </article>
+
+      <article class="card">
+        <h2>Chat timeline (proyecto activo)</h2>
+        <table>
+          <thead><tr><th>Timestamp</th><th>Role</th><th>Contenido</th></tr></thead>
+          <tbody id="timelineBody"><tr><td colspan="3">Sin datos</td></tr></tbody>
+        </table>
+      </article>
+
+      <article class="card" style="grid-column: 1 / -1;">
+        <h2>Memoria (proyecto activo)</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Scope</th><th>Contenido</th><th>Fecha</th></tr></thead>
+          <tbody id="memoryBody"><tr><td colspan="4">Sin datos</td></tr></tbody>
+        </table>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const token = ${JSON.stringify(token)};
+    const state = { projectId: "" };
+
+    const q = (id) => document.getElementById(id);
+    const esc = (v) => String(v ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+    function status(text, kind = "") {
+      const el = q("status");
+      el.textContent = text;
+      el.className = "status" + (kind ? " " + kind : "");
+    }
+
+    async function api(url, options = {}) {
+      const headers = Object.assign({}, options.headers || {});
+      if (token && token.trim()) headers.authorization = token;
+      if (options.body && !headers["content-type"]) headers["content-type"] = "application/json";
+
+      const res = await fetch(url, {
+        method: options.method || "GET",
+        headers,
+        body: options.body,
+        credentials: "same-origin"
+      });
+
+      const raw = await res.text();
+      let json = null;
+      try { json = raw ? JSON.parse(raw) : null; } catch (_e) { json = null; }
+
+      if (!res.ok) {
+        const err = new Error((json && json.message) || ("HTTP " + res.status));
+        err.status = res.status;
+        throw err;
+      }
+
+      return json;
+    }
+
+    function setTableRows(tbodyId, html, fallbackColspan, fallbackText) {
+      const tbody = q(tbodyId);
+      tbody.innerHTML = html || '<tr><td colspan="' + fallbackColspan + '">' + esc(fallbackText) + '</td></tr>';
+    }
+
+    async function loadProjects() {
+      const projects = await api("/v1/projects");
+      const select = q("activeProject");
+      select.innerHTML = '<option value="">Selecciona proyecto</option>' +
+        (projects || []).map((p) => '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + esc(p.status) + ')</option>').join("");
+
+      if (!state.projectId && projects && projects.length > 0) {
+        state.projectId = String(projects[0].id);
+        select.value = state.projectId;
+      } else if (state.projectId) {
+        select.value = state.projectId;
+      }
+
+      return projects;
+    }
+
+    async function createProject(event) {
+      event.preventDefault();
+      const name = q("projectName").value.trim();
+      const statusValue = q("projectStatus").value;
+      if (!name) return;
+
+      status("Creando proyecto...", "");
+      try {
+        const project = await api("/v1/projects", {
+          method: "POST",
+          body: JSON.stringify({ name, status: statusValue })
+        });
+        q("projectName").value = "";
+        state.projectId = String(project.id);
+        await loadProjects();
+        status("Proyecto creado y seleccionado.", "ok");
+      } catch (error) {
+        status("Error creando proyecto: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    async function createTask(event) {
+      event.preventDefault();
+      const title = q("taskTitle").value.trim();
+      const taskStatus = q("taskStatus").value;
+      const projectId = q("activeProject").value || state.projectId;
+      if (!projectId) {
+        status("Selecciona proyecto antes de crear tarea.", "error");
+        return;
+      }
+      if (!title) return;
+
+      status("Creando tarea...", "");
+      try {
+        await api("/v1/projects/" + encodeURIComponent(projectId) + "/tasks", {
+          method: "POST",
+          body: JSON.stringify({ title, status: taskStatus })
+        });
+        q("taskTitle").value = "";
+        state.projectId = projectId;
+        status("Tarea creada. Si hay regla activa, se dispara automatizacion.", "ok");
+        await loadEvidence();
+      } catch (error) {
+        status("Error creando tarea: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    async function createRule(event) {
+      event.preventDefault();
+      const ruleName = q("ruleName").value.trim();
+      const ruleMessage = q("ruleMessage").value.trim();
+      if (!ruleName) return;
+
+      status("Creando regla...", "");
+      try {
+        await api("/v1/automation/rules", {
+          method: "POST",
+          body: JSON.stringify({
+            name: ruleName,
+            trigger: { type: "task_created" },
+            actions: [
+              { type: "post_chat_message", payload: ruleMessage ? { content: ruleMessage } : {} },
+              { type: "save_memory", payload: { scope: "proyecto", source: "workboard:rule" } }
+            ]
+          })
+        });
+        q("ruleName").value = "";
+        q("ruleMessage").value = "";
+        status("Regla creada.", "ok");
+      } catch (error) {
+        status("Error creando regla: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    async function bootstrapFlow() {
+      status("Creando flujo base...", "");
+      try {
+        const stamp = new Date().toISOString().slice(11, 19).replace(/:/g, "");
+        const result = await api("/v1/onboarding/bootstrap-flow", {
+          method: "POST",
+          body: JSON.stringify({
+            projectName: "Proyecto rapido " + stamp,
+            conversationTitle: "Conversacion rapida " + stamp,
+            ruleName: "Regla rapida " + stamp
+          })
+        });
+
+        if (result && result.project && result.project.id) {
+          state.projectId = String(result.project.id);
+          await loadProjects();
+        }
+
+        status("Flujo base creado. Ahora crea una tarea en Paso 2.", "ok");
+      } catch (error) {
+        if (error && error.status === 403) {
+          status("Solo admin puede usar bootstrap flow.", "error");
+          return;
+        }
+        status("Error bootstrap: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    async function loadRuns() {
+      const runs = await api("/v1/automation/runs");
+      const html = (runs || []).slice(0, 8).map((run) =>
+        '<tr>' +
+          '<td class="mono">' + esc(run.ruleId) + '</td>' +
+          '<td>' + esc(run.status) + '</td>' +
+          '<td>' + esc(run.attempts || 1) + '</td>' +
+        '</tr>'
+      ).join("");
+      setTableRows("runsBody", html, 3, "Sin runs");
+    }
+
+    async function loadTimeline() {
+      const projectId = q("activeProject").value || state.projectId;
+      if (!projectId) {
+        setTableRows("timelineBody", "", 3, "Selecciona proyecto");
+        return;
+      }
+      const timeline = await api("/v1/chat/timeline?projectId=" + encodeURIComponent(projectId) + "&limit=10");
+      const html = (timeline || []).map((item) =>
+        '<tr>' +
+          '<td class="mono">' + esc(item.timestamp) + '</td>' +
+          '<td>' + esc(item.role) + '</td>' +
+          '<td>' + esc(item.content) + '</td>' +
+        '</tr>'
+      ).join("");
+      setTableRows("timelineBody", html, 3, "Sin mensajes del proyecto");
+    }
+
+    async function loadMemory() {
+      const projectId = q("activeProject").value || state.projectId;
+      if (!projectId) {
+        setTableRows("memoryBody", "", 4, "Selecciona proyecto");
+        return;
+      }
+      const memories = await api("/v1/memory/search?projectId=" + encodeURIComponent(projectId) + "&limit=10");
+      const html = (memories || []).map((item) =>
+        '<tr>' +
+          '<td class="mono">' + esc(item.id) + '</td>' +
+          '<td>' + esc(item.scope) + '</td>' +
+          '<td>' + esc(item.content) + '</td>' +
+          '<td class="mono">' + esc(item.timestamp) + '</td>' +
+        '</tr>'
+      ).join("");
+      setTableRows("memoryBody", html, 4, "Sin memorias del proyecto");
+    }
+
+    async function loadEvidence() {
+      try {
+        await Promise.all([loadRuns(), loadTimeline(), loadMemory()]);
+      } catch (error) {
+        if (error && error.status === 401) {
+          status("Unauthorized: vuelve a /login.", "error");
+          return;
+        }
+        status("Error cargando evidencia: " + (error.message || "fallo"), "error");
+      }
+    }
+
+    q("projectForm").addEventListener("submit", createProject);
+    q("taskForm").addEventListener("submit", createTask);
+    q("ruleForm").addEventListener("submit", createRule);
+    q("bootstrapBtn").addEventListener("click", bootstrapFlow);
+    q("refreshProjects").addEventListener("click", async () => {
+      try {
+        await loadProjects();
+        status("Proyectos actualizados.", "ok");
+      } catch (error) {
+        status("Error cargando proyectos: " + (error.message || "fallo"), "error");
+      }
+    });
+    q("activeProject").addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLSelectElement)) return;
+      state.projectId = target.value || "";
+      loadEvidence();
+    });
+    q("refreshEvidence").addEventListener("click", loadEvidence);
+    q("refreshRuns").addEventListener("click", loadRuns);
+    q("openLoginBtn").addEventListener("click", () => { window.location.href = "/login"; });
+
+    (async () => {
+      try {
+        await loadProjects();
+        await loadEvidence();
+      } catch (error) {
+        if (error && error.status === 401) {
+          status("Unauthorized: inicia sesion en /login.", "error");
+          return;
+        }
+        status("Error inicializando panel: " + (error.message || "fallo"), "error");
+      }
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 function renderDashboardHtml(token: string, role: string) {
   return `<!doctype html>
 <html lang="es">
@@ -1236,7 +1741,11 @@ export function createDashboardRouter(
     "/",
     asyncHandler(async (req, res) => {
       const authHeader = req.header("authorization") ?? "";
-      res.type("text/html").send(renderDashboardHtml(authHeader, req.role));
+      const classicMode = String(req.query.classic ?? "") === "1";
+      const html = classicMode
+        ? renderDashboardHtml(authHeader, req.role)
+        : renderOperationalDashboardHtml(authHeader, req.role);
+      res.type("text/html").send(html);
     })
   );
 
