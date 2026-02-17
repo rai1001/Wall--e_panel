@@ -35,6 +35,10 @@ Backward compatibility is kept:
 - JWT rotation via `JWT_SECRETS=secret_new,secret_old`.
 - Fallback to `JWT_SECRET` when `JWT_SECRETS` is not defined.
 
+5. Day 4 hardening updates
+- `memory_embeddings` now stores `embedding_provider`, `embedding_model`, `embedding_version`.
+- New shared limiter table: `rate_limit_buckets` for distributed rate-limit mode.
+
 ## Real database migration (blocking path)
 
 Use this flow when upgrading an existing SQLite database.
@@ -86,6 +90,10 @@ npm run restore -- --file=backups/<your-backup-file>.db
 - `DB_PATH` (optional, default `data/assistant.db`)
 - `JWT_SECRETS` (optional, comma-separated)
 - `JWT_SECRET` (fallback)
+- `EMBEDDING_PROVIDER` (`local` or `openai`)
+- `OPENAI_API_KEY` (required for `EMBEDDING_PROVIDER=openai`)
+- `OPENAI_EMBEDDING_MODEL` (optional, default `text-embedding-3-small`)
+- `RATE_LIMIT_STORE` (`db` recommended, `memory` fallback)
 - `ALLOW_LEGACY_HEADERS` (optional, default `false`)
 - `FORCE_RESET=true` only for local reset script
 

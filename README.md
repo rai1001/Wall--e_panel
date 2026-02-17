@@ -53,6 +53,8 @@ See `.env.example` for minimum config:
 - `PORT`
 - `DB_PATH`
 - `JWT_SECRET` or `JWT_SECRETS`
+- `EMBEDDING_PROVIDER` (`local` or `openai`)
+- `RATE_LIMIT_STORE` (`db` recommended)
 - optional flags
 
 ## API versioning
@@ -75,7 +77,7 @@ Each memory supports:
 - `tags`
 
 ### Hybrid retrieval
-- Vector embeddings stored in SQLite (`memory_embeddings`)
+- Semantic embeddings (local `semantic-hash-v2` or optional OpenAI) stored in SQLite (`memory_embeddings`)
 - Lexical score
 - Context priority:
   - active project
@@ -141,7 +143,7 @@ Runbook:
 
 ## Security
 - JWT with simple rotation (`JWT_SECRETS`)
-- Global rate limit + dedicated login rate limit
+- Distributed rate limit (SQLite-backed shared counters) + dedicated login rate limit
 - Progressive lockout after failed login attempts
 - Strong payload validation with Zod
 - Persistent audit records
@@ -158,18 +160,19 @@ Runbook:
 ## Known issues (2026-02-17)
 
 Current status:
-- Day 3 stable and operational for daily use.
+- Day 4 hardening applied and operational for daily use.
 
 Pending fixes:
-- Improve semantic embedding quality beyond current local deterministic vectorization.
-- Move rate limiting from local memory to a truly distributed backend store.
+- Add cost/latency guardrails dashboard for OpenAI embedding mode (quota, fallback ratio, timeout stats).
 
 ## Technical docs
 - `docs/adr-day1.md`
 - `docs/adr-day2.md`
 - `docs/adr-day3.md`
+- `docs/adr-day4.md`
 - `docs/day2-checklist.md`
 - `docs/day3-checklist.md`
+- `docs/day4-checklist.md`
 - `docs/openapi.yaml`
 - `docs/day3-migration.md`
 - `docs/runbook.md`

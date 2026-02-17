@@ -8,6 +8,10 @@ Los siguientes scripts estan declarados en `package.json` y son los oficiales:
 - `npm run reindex`
 - `npm run reset:local`
 
+Config flags relevant for operations:
+- `EMBEDDING_PROVIDER=local|openai`
+- `RATE_LIMIT_STORE=db|memory` (`db` recommended for shared limits)
+
 ## 1) Arranque y checks
 
 ```bash

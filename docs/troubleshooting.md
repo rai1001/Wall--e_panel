@@ -89,3 +89,18 @@ PowerShell:
 ```powershell
 $env:FORCE_RESET='true'; npm run reset:local
 ```
+
+## 6) Embedding provider issues (`EMBEDDING_PROVIDER=openai`)
+
+Symptoms:
+- Search quality drops suddenly to lexical-only behavior.
+- Slow `/v1/memory/search` responses when remote provider is unstable.
+
+Checks:
+1. Verify `OPENAI_API_KEY` is set and valid.
+2. Verify outbound access to `https://api.openai.com`.
+3. Confirm model name in `OPENAI_EMBEDDING_MODEL`.
+
+Notes:
+- Current implementation falls back to local embeddings on remote errors.
+- Run `npm run reindex` after changing embedding provider/model to keep vectors consistent.
