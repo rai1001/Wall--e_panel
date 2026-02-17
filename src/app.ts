@@ -17,6 +17,7 @@ import { deprecationHeaders } from "./shared/http/deprecation";
 import { createRateLimitMiddleware } from "./shared/http/rate-limit";
 import { createRequestMetricsMiddleware } from "./ops/request-metrics.middleware";
 import { createDashboardRouter } from "./ui/dashboard.router";
+import { renderLoginPageHtml } from "./ui/login.page";
 
 function readOpenApiSpec() {
   const filePath = path.join(process.cwd(), "docs", "openapi.yaml");
@@ -101,8 +102,13 @@ export function createApp(context: AppContext = createAppContext()) {
       name: "OpenClaw Assistant Panel API",
       health: "/health",
       openapi: "/openapi.yaml",
+      login: "/login",
       dashboard: "/v1/dashboard (auth required)"
     });
+  });
+
+  app.get("/login", (_req, res) => {
+    res.type("text/html").send(renderLoginPageHtml());
   });
 
   app.get("/openapi.yaml", (_req, res) => {

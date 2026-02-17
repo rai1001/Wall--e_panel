@@ -11,6 +11,9 @@ const loginBodySchema = z.object({
   password: z.string().min(1).max(256)
 });
 
+const AUTH_COOKIE_NAME = "oc_token";
+const AUTH_COOKIE_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
 export function createAuthRouter(authService: AuthService, rateLimiter: RateLimiter) {
   const router = Router();
 
@@ -24,7 +27,26 @@ export function createAuthRouter(authService: AuthService, rateLimiter: RateLimi
     validateBody(loginBodySchema),
     asyncHandler(async (req, res) => {
       const result = authService.login(req.body.email, req.body.password);
+      res.cookie(AUTH_COOKIE_NAME, result.token, {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        maxAge: AUTH_COOKIE_MAX_AGE_MS,
+        path: "/"
+      });
       res.status(200).json(result);
+    })
+  );
+
+  router.post(
+    "/logout",
+    asyncHandler(async (_req, res) => {
+      res.clearCookie(AUTH_COOKIE_NAME, {
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/"
+      });
+      res.status(200).json({ ok: true });
     })
   );
 

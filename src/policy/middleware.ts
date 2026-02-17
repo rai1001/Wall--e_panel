@@ -12,11 +12,44 @@ function resolveRoleFromLegacyHeader(req: Request): Role {
   return "viewer";
 }
 
+function resolveBearerToken(authHeader: string | undefined): string | undefined {
+  if (!authHeader?.toLowerCase().startsWith("bearer ")) {
+    return undefined;
+  }
+  const token = authHeader.slice("bearer ".length).trim();
+  return token.length > 0 ? token : undefined;
+}
+
+function resolveCookieToken(cookieHeader: string | undefined, key: string): string | undefined {
+  if (!cookieHeader) {
+    return undefined;
+  }
+
+  const pairs = cookieHeader.split(";");
+  for (const pair of pairs) {
+    const [rawName, ...rest] = pair.trim().split("=");
+    if (rawName !== key || rest.length === 0) {
+      continue;
+    }
+
+    const rawValue = rest.join("=");
+    try {
+      return decodeURIComponent(rawValue);
+    } catch (_error) {
+      return rawValue;
+    }
+  }
+
+  return undefined;
+}
+
 export function createAttachActor(authService: AuthService): RequestHandler {
   return (req, _res, next) => {
-    const authHeader = req.header("authorization");
-    if (authHeader?.toLowerCase().startsWith("bearer ")) {
-      const token = authHeader.slice("bearer ".length).trim();
+    const token =
+      resolveBearerToken(req.header("authorization")) ??
+      resolveCookieToken(req.header("cookie"), "oc_token");
+
+    if (token) {
       const payload = authService.verifyToken(token);
       req.userId = payload.sub;
       req.actorId = payload.sub;
