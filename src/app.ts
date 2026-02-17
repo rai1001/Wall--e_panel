@@ -96,6 +96,15 @@ export function createApp(context: AppContext = createAppContext()) {
     res.status(200).json({ status: "ok" });
   });
 
+  app.get("/", (_req, res) => {
+    res.status(200).json({
+      name: "OpenClaw Assistant Panel API",
+      health: "/health",
+      openapi: "/openapi.yaml",
+      dashboard: "/v1/dashboard (auth required)"
+    });
+  });
+
   app.get("/openapi.yaml", (_req, res) => {
     res.type("application/yaml").send(readOpenApiSpec());
   });
